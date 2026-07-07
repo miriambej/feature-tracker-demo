@@ -170,6 +170,28 @@ function workspaceSummaries(features, milestones) {
     return { workspace, features: items, dates, milestones: ms, blockers, overallTone, overallLabel, totalUsers: items.reduce((s, f) => s + Number(f.user_count || 0), 0), criticalBlockers: blockers.filter(f => priority(f.user_count) === 'Critical').length };
   }).sort((a, b) => b.totalUsers - a.totalUsers);
 }
+
+function fmtDateValue(d) {
+  return d ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+}
+function dueThisSprint(features, milestones) {
+  const incomplete = [];
+  features.forEach(feature => {
+    const dates = milestones[feature.workspace] || {};
+    MILESTONES.forEach(milestone => {
+      const due = parseDate(dates[milestone.key]);
+      if (due && !isAtLeast(feature.status, milestone.target)) {
+        incomplete.push({ feature, milestone, due });
+      }
+    });
+  });
+  const futureDueDates = incomplete.map(item => item.due).filter(d => d > NEXT_SPRINT_END).sort((a, b) => a - b);
+  const sprintEnds = [CURRENT_SPRINT_END, NEXT_SPRINT_END, ...futureDueDates];
+  const sprintEnd = sprintEnds.find(end => incomplete.some(item => item.due <= end)) || null;
+  const items = sprintEnd ? incomplete.filter(item => item.due <= sprintEnd) : [];
+  items.sort((a, b) => a.due - b.due || Number(b.feature.user_count || 0) - Number(a.feature.user_count || 0));
+  return { sprintEnd, items };
+}
 function timelineMonths(summaries) {
   const points = [monthStart(CURRENT_SPRINT_END)];
   summaries.forEach(ws => MILESTONES.forEach(m => { const d = parseDate(ws.dates[m.key]); if (d) points.push(monthStart(d)); }));
@@ -259,8 +281,8 @@ function OverviewDashboard({ features, milestones, workspaces, workspaceFilter, 
   const grouped=Object.fromEntries(STATUSES.map(([k])=>[k,filtered.filter(f=>f.status===k).length]));
   const total=filtered.length; const totalUsers=filtered.reduce((s,f)=>s+Number(f.user_count||0),0);
   const nextActions=filtered.filter(f=>['build_done','sit_done','deployment_done','bs_signoff_done'].includes(f.status)).sort((a,b)=>Number(b.user_count||0)-Number(a.user_count||0)).slice(0,8);
-  const summaries=workspaceSummaries(filtered,milestones).map(s=>({...s, dueNextBlockers:Array.from(new Map(s.milestones.filter(m=>m.health.tone==='due_next').flatMap(m=>m.health.blockers).map(f=>[f.id,f])).values())})).filter(s=>s.dueNextBlockers.length);
-  return <div className="dashboard"><div className="dash-head"><div><div className="eyebrow">Overview Dashboard</div><h1>Stage health and next sprint focus</h1></div><select value={workspaceFilter} onChange={e=>setWorkspaceFilter(e.target.value)}>{workspaces.map(w=><option key={w}>{w}</option>)}</select></div><div className="summary-grid"><SummaryCard label="Total Features" value={total} hint="Current view"/><SummaryCard label="In Flight" value={filtered.filter(f=>!['initial','uat_done'].includes(f.status)).length} hint="Not initial or done"/><SummaryCard label="Ready Next" value={nextActions.length} hint="Ready for next stage"/><SummaryCard label="Total Users" value={totalUsers.toLocaleString()} hint="Usage impact"/><SummaryCard label="Done" value={grouped.uat_done||0} hint="UAT done"/><SummaryCard label="Progress" value={`${total?Math.round(filtered.reduce((s,f)=>s+score(f.status),0)/total):0}%`} hint="Weighted maturity"/></div><div className="two-col"><div className="panel"><h3>Next sprint priorities (ending {NEXT_SPRINT_END.toLocaleDateString(undefined,{day:'numeric',month:'short',year:'numeric'})})</h3>{summaries.length?summaries.map(s=><div className="priority-block" key={s.workspace}><b>{s.workspace}</b><small>{s.dueNextBlockers.length} blockers · {s.dueNextBlockers.filter(f=>priority(f.user_count)==='Critical').length} critical</small>{s.dueNextBlockers.slice(0,5).map(f=><div key={f.id} className={`queue-card ${priorityClass(f.user_count)}`}><div><b>{f.feature_name}</b><small>{f.workspace} · {STATUS_LABEL[f.status]}</small></div><span>{priority(f.user_count)}</span></div>)}</div>):<p className="muted">No workspace milestones due next sprint.</p>}</div><div className="panel"><h3>Stage breakdown</h3>{STATUSES.map(([k,l])=><div className="bar-row" key={k}><span>{l}</span><b>{grouped[k]||0}</b><div><i style={{width:`${total?(grouped[k]||0)/total*100:0}%`}}/></div></div>)}</div></div><div className="panel"><h3>Top next actions</h3>{nextActions.length?nextActions.map(f=><div className={`next-action-card ${priorityClass(f.user_count)}`} key={f.id}><div className="next-action-main"><b>{f.feature_name}</b><small>{f.workspace}</small><small>Current: {STATUS_LABEL[f.status]}</small><small>Next: {nextStageLabel(f.status)}</small><small>Due: {fmtDate(nextStageDueDate(f,milestones))}</small></div><div className="next-action-impact"><span>{Number(f.user_count||0).toLocaleString()} users</span><b>{priority(f.user_count)}</b></div></div>):<p className="muted">No features currently ready for the next action.</p>}</div></div>;
+  const dueSprint=dueThisSprint(filtered,milestones);
+  return <div className="dashboard"><div className="dash-head"><div><div className="eyebrow">Overview Dashboard</div><h1>Stage health and next sprint focus</h1></div><select value={workspaceFilter} onChange={e=>setWorkspaceFilter(e.target.value)}>{workspaces.map(w=><option key={w}>{w}</option>)}</select></div><div className="summary-grid"><SummaryCard label="Total Features" value={total} hint="Current view"/><SummaryCard label="In Flight" value={filtered.filter(f=>!['initial','uat_done'].includes(f.status)).length} hint="Not initial or done"/><SummaryCard label="Ready Next" value={nextActions.length} hint="Ready for next stage"/><SummaryCard label="Total Users" value={totalUsers.toLocaleString()} hint="Usage impact"/><SummaryCard label="Done" value={grouped.uat_done||0} hint="UAT done"/><SummaryCard label="Progress" value={`${total?Math.round(filtered.reduce((s,f)=>s+score(f.status),0)/total):0}%`} hint="Weighted maturity"/></div><div className="two-col"><div className="panel"><h3>Due This Sprint</h3><p className="muted">Sprint ending {fmtDateValue(dueSprint.sprintEnd)}</p>{dueSprint.items.length?dueSprint.items.map(({feature:f,milestone:m,due})=><div key={`${f.id}-${m.key}`} className={`next-action-card ${priorityClass(f.user_count)}`}><div className="next-action-main"><b>{f.feature_name}</b><small>{f.workspace}</small><small>Current: {STATUS_LABEL[f.status]}</small><small>Milestone needed: {m.label}</small><small>Due: {fmtDateValue(due)}</small></div><div className="next-action-impact"><span>{Number(f.user_count||0).toLocaleString()} users</span><b>{priority(f.user_count)}</b></div></div>):<p className="muted">No incomplete milestone work has a due date.</p>}</div><div className="panel"><h3>Stage breakdown</h3>{STATUSES.map(([k,l])=><div className="bar-row" key={k}><span>{l}</span><b>{grouped[k]||0}</b><div><i style={{width:`${total?(grouped[k]||0)/total*100:0}%`}}/></div></div>)}</div></div><div className="panel"><h3>Top next actions</h3>{nextActions.length?nextActions.map(f=><div className={`next-action-card ${priorityClass(f.user_count)}`} key={f.id}><div className="next-action-main"><b>{f.feature_name}</b><small>{f.workspace}</small><small>Current: {STATUS_LABEL[f.status]}</small><small>Next: {nextStageLabel(f.status)}</small><small>Due: {fmtDate(nextStageDueDate(f,milestones))}</small></div><div className="next-action-impact"><span>{Number(f.user_count||0).toLocaleString()} users</span><b>{priority(f.user_count)}</b></div></div>):<p className="muted">No features currently ready for the next action.</p>}</div></div>;
 }
 
 function App(){

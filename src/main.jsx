@@ -72,7 +72,7 @@ function nextStageDueDate(feature, milestones) {
   return milestone ? milestones[feature.workspace]?.[milestone] || '' : '';
 }
 function plannedThrough(featureId, allocations) {
-  const stages = allocations.filter(a => a.featureId === featureId).map(a => PLAN_STAGES.indexOf(a.stage)).filter(i => i >= 0);
+  const stages = allocations.filter(a => a.featureId === featureId && a.isStageComplete).map(a => PLAN_STAGES.indexOf(a.stage)).filter(i => i >= 0);
   const max = stages.length ? Math.max(...stages) : -1;
   return max >= 0 ? PLAN_STAGES[max] : 'Not planned';
 }
@@ -84,8 +84,16 @@ function actualPlannedThrough(status) {
   if (['uat_in_progress', 'uat_done'].includes(status)) return 'UAT';
   return 'Not planned';
 }
+function actualCompletedThrough(status) {
+  if (['build_done'].includes(status)) return 'Build';
+  if (['sit_done'].includes(status)) return 'SIT';
+  if (['deployment_done'].includes(status)) return 'Deploy';
+  if (['bs_signoff_done'].includes(status)) return 'BA Sign Off';
+  if (['uat_done'].includes(status)) return 'UAT';
+  return 'Not planned';
+}
 function effectivePlannedThrough(feature, allocations) {
-  const actualIdx = PLAN_STAGES.indexOf(actualPlannedThrough(feature.status));
+  const actualIdx = PLAN_STAGES.indexOf(actualCompletedThrough(feature.status));
   const plannedIdx = PLAN_STAGES.indexOf(plannedThrough(feature.id, allocations));
   const max = Math.max(actualIdx, plannedIdx);
   return max >= 0 ? PLAN_STAGES[max] : 'Not planned';
@@ -127,10 +135,12 @@ function stageSortIndex(stage) {
   return idx >= 0 ? idx : STAGE_OPTIONS.length;
 }
 function nextPlanningStageFromRows(feature, rows) {
+  const doneIdx = PLAN_STAGES.indexOf(actualCompletedThrough(feature.status));
+  const completedIdx = rows.filter(a => a.isStageComplete).map(a => PLAN_STAGES.indexOf(a.stage)).filter(i => i >= 0);
+  if (Math.max(doneIdx, completedIdx.length ? Math.max(...completedIdx) : -1) >= PLAN_STAGES.length - 1) return 'Planning Complete';
   const actualIdx = PLAN_STAGES.indexOf(actualPlannedThrough(feature.status));
   const plannedIdx = rows.map(a => PLAN_STAGES.indexOf(a.stage)).filter(i => i >= 0);
-  const completedIdx = rows.filter(a => a.isStageComplete).map(a => PLAN_STAGES.indexOf(a.stage)).filter(i => i >= 0);
-  const max = Math.max(actualIdx, plannedIdx.length ? Math.max(...plannedIdx) : -1, completedIdx.length ? Math.max(...completedIdx) : -1);
+  const max = Math.max(actualIdx, plannedIdx.length ? Math.max(...plannedIdx) : -1);
   return max >= PLAN_STAGES.length - 1 ? 'Planning Complete' : (max >= 0 ? PLAN_STAGES[max + 1] : 'Requirement');
 }
 function normaliseSprintName(v, fallbackQuarter = '26Q1') {
@@ -414,7 +424,8 @@ function DeliveryPlan({ features, allocations, setAllocations, capacities, setCa
   const standaloneKeys=Array.from(new Set(allocations.filter(a=>!a.featureId&&!isSplitPlanningGroup(a.planningGroup||a.featureName)).map(a=>a.featureName||a.planningGroup||a.workspaceName).filter(Boolean)));
   const planningFeatures=[...features,...standaloneKeys.map(key=>({id:`standalone:${key}`,planningKey:key,feature_name:key,workspace:allocations.find(a=>(a.featureName||a.planningGroup||a.workspaceName)===key)?.workspace||key,status:'initial',owner:'',user_count:0}))];
   const entityAllocations=feature=>feature.planningKey?allocations.filter(a=>!a.featureId&&(a.featureName||a.planningGroup||a.workspaceName)===feature.planningKey):allocations.filter(a=>a.featureId===feature.id);
-  const entityThrough=feature=>{const actualIdx=PLAN_STAGES.indexOf(actualPlannedThrough(feature.status));const completed=entityAllocations(feature).filter(a=>a.isStageComplete).map(a=>PLAN_STAGES.indexOf(a.stage)).filter(i=>i>=0);const max=Math.max(actualIdx,completed.length?Math.max(...completed):-1);return max>=0?PLAN_STAGES[max]:'Not planned';};
+  const entityThrough=feature=>{const actualIdx=PLAN_STAGES.indexOf(actualCompletedThrough(feature.status));const completed=entityAllocations(feature).filter(a=>a.isStageComplete).map(a=>PLAN_STAGES.indexOf(a.stage)).filter(i=>i>=0);const max=Math.max(actualIdx,completed.length?Math.max(...completed):-1);return max>=0?PLAN_STAGES[max]:'Not planned';};
+  const entityIsPlanningComplete=feature=>PLAN_STAGES.indexOf(entityThrough(feature))>=PLAN_STAGES.length-1;
   const entityLatestPlannedStage=feature=>{const rows=entityAllocations(feature); const planned=rows.map(a=>PLAN_STAGES.indexOf(a.stage)).filter(i=>i>=0);const actualIdx=PLAN_STAGES.indexOf(actualPlannedThrough(feature.status));const max=Math.max(actualIdx,planned.length?Math.max(...planned):-1);if(max>=0)return PLAN_STAGES[max]; return rows.some(a=>a.stage===NEEDS_MAPPING_STAGE)?NEEDS_MAPPING_STAGE:'Requirement';};
   const entityNext=feature=>nextPlanningStageFromRows(feature,entityAllocations(feature));
   const entityLatestSprint=feature=>entityAllocations(feature).map(a=>a.sprint).filter(Boolean).sort().at(-1)||'—';
@@ -435,11 +446,14 @@ function DeliveryPlan({ features, allocations, setAllocations, capacities, setCa
     const file=e.target.files?.[0]; if(!file)return;
     try{
       const XLSX=await import(/* @vite-ignore */ 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
-      const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+      const wb=XLSX.read(await file.arrayBuffer(),{type:'array',cellStyles:true});
       const sheet=wb.Sheets['26Q1 Planner'];
       if(!sheet){setImportMessage('Sheet "26Q1 Planner" was not found.');return;}
-      const cell=(r,c)=>sheet[XLSX.utils.encode_cell({r,c})]?.v;
+      const rawCell=(r,c)=>sheet[XLSX.utils.encode_cell({r,c})];
+      const cell=(r,c)=>rawCell(r,c)?.v;
       const text=(r,c)=>String(cell(r,c)??'').trim();
+      const fillRgb=(r,c)=>String(rawCell(r,c)?.s?.fill?.fgColor?.rgb||rawCell(r,c)?.s?.fgColor?.rgb||'').toUpperCase();
+      const expectedComplete=(r,c)=>[c,c+1,c+2].some(col=>fillRgb(r,col)==='FFFFFF00');
       const sprintCols=Array.from({length:7},(_,i)=>({label:`S${i+1}`,col:17+i*3,sprint:normaliseSprintName(`26Q1S${i+1}`)}));
       const range=XLSX.utils.decode_range(sheet['!ref']||'A1:A220');
       const imported=[];
@@ -460,10 +474,11 @@ function DeliveryPlan({ features, allocations, setAllocations, capacities, setCa
           const sourceStage=text(r,col+1);
           const stage=normalisePlanStage(sourceStage)||NEEDS_MAPPING_STAGE;
           const days=Number(cell(r,col+2)||0);
+          const isStageComplete=expectedComplete(r,col);
           if(owner&&!/^total$/i.test(owner)&&days&&!isRolePlaceholder(owner)){
             const split=isSplitPlanningGroup(currentFeature);
             const match=!split?features.find(f=>f.feature_name.trim().toLowerCase()===currentFeature.toLowerCase()):null;
-            imported.push({id:id(),featureId:match?.id||'',featureName:split?'':currentFeature,actualFeatureName:match?.feature_name||'',planningGroup:split?currentFeature:'',workspaceName:currentFeature,workspace:match?.workspace||(!split?currentFeature:''),sprint,owner,stage,sourceStage,days,isStageComplete:false});
+            imported.push({id:id(),featureId:match?.id||'',featureName:split?'':currentFeature,actualFeatureName:match?.feature_name||'',planningGroup:split?currentFeature:'',workspaceName:currentFeature,workspace:match?.workspace||(!split?currentFeature:''),sprint,owner,stage,sourceStage,days,isStageComplete});
           }
         });
       }
@@ -491,7 +506,7 @@ function DeliveryPlan({ features, allocations, setAllocations, capacities, setCa
     finally {e.target.value='';}
   }
   const kanbanBase=planningFeatures.filter(f=>(planWorkspaceFilter==='ALL'||f.workspace===planWorkspaceFilter)&&(ownerFilter==='ALL'||splitOwners(f.owner).includes(ownerFilter)||entityAllocations(f).some(a=>a.owner===ownerFilter)));
-  const kanbanItems=kanbanBase.map(feature=>{const through=entityThrough(feature); const next=entityNext(feature); const latestStage=next==='Planning Complete'?'Planning Complete':entityLatestPlannedStage(feature); return{feature,through,next,latest:entityLatestSprint(feature),latestStage,milestones:entityMilestones(feature)};}).sort((a,b)=>priorityRank(a.feature.user_count)-priorityRank(b.feature.user_count)||Number(b.feature.user_count||0)-Number(a.feature.user_count||0));
+  const kanbanItems=kanbanBase.map(feature=>{const through=entityThrough(feature); const next=entityNext(feature); const latestStage=entityIsPlanningComplete(feature)?'Planning Complete':entityLatestPlannedStage(feature); return{feature,through,next,latest:entityLatestSprint(feature),latestStage,milestones:entityMilestones(feature)};}).sort((a,b)=>priorityRank(a.feature.user_count)-priorityRank(b.feature.user_count)||Number(b.feature.user_count||0)-Number(a.feature.user_count||0));
   const kanbanLabels={Requirement:'Requirement Planning',Build:'Build Planning',SIT:'SIT Planning',Deploy:'Deploy Planning','BA Sign Off':'BA Sign Off Planning',UAT:'UAT Planning',[NEEDS_MAPPING_STAGE]:'Needs Mapping','Planning Complete':'Planning Complete'};
   const kanbanColumns=[...STAGE_OPTIONS,'Planning Complete'].map(stage=>({stage,label:kanbanLabels[stage],items:kanbanItems.filter(item=>item.latestStage===stage)}));
   const selectedAllocations=selectedPlanFeature?entityAllocations(selectedPlanFeature).sort((a,b)=>String(a.sprint).localeCompare(String(b.sprint))||stageSortIndex(a.stage)-stageSortIndex(b.stage)):[];

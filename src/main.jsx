@@ -1267,6 +1267,10 @@ function ReadyQueue({ features, onEdit }) {
 
 function ExecutiveDashboard({
   features,
+  allocations,
+  customSprints,
+  sprintDates,
+  finalStageByFeatureId,
   milestones,
   setMilestones,
   workspaces,
@@ -1284,6 +1288,138 @@ function ExecutiveDashboard({
   const months = timelineMonths(summaries);
   const todayIdx = monthIndex(monthStart(CURRENT_SPRINT_END), months);
   const selected = summaries.find((s) => s.workspace === selectedWorkspace);
+  const executiveSprintDates = effectiveSprintDateRows(
+    Array.from(
+      new Set(
+        [
+          ...customSprints,
+          ...allocations.map((allocation) => allocation.sprint),
+        ]
+          .map(normaliseSprintName)
+          .filter(Boolean),
+      ),
+    ).sort(),
+    sprintDates,
+  );
+  const executiveSprintDateById = new Map(
+    executiveSprintDates.map((row) => [normaliseSprintName(row.sprint), row]),
+  );
+  const executiveAllocationsForFeature = (feature) => {
+    const featureNameKey = matchKey(feature.feature_name);
+    const featureWorkspaceKey = matchKey(
+      normaliseWorkspaceName(feature.workspace),
+    );
+    return allocations.filter((allocation) => {
+      if (allocationHasFeature(allocation, feature.id)) return true;
+      const savedNames = [
+        ...(Array.isArray(allocation.possibleMatches)
+          ? allocation.possibleMatches
+          : []),
+        allocation.actualFeatureName,
+        allocation.featureName,
+      ].filter(Boolean);
+      if (!savedNames.some((name) => matchKey(name) === featureNameKey))
+        return false;
+      const allocationWorkspaceKey = matchKey(
+        normaliseWorkspaceName(
+          allocation.workspace ||
+            allocation.workspaceName ||
+            allocation.planningGroup,
+        ),
+      );
+      return (
+        !allocationWorkspaceKey ||
+        !featureWorkspaceKey ||
+        allocationWorkspaceKey === featureWorkspaceKey
+      );
+    });
+  };
+  const featureCompletionRows = filtered
+    .map((feature) => {
+      const finalStage = finalStageByFeatureId?.[feature.id]
+        ? normaliseFinalStage(finalStageByFeatureId[feature.id])
+        : defaultFinalStageForFeature(feature);
+      const plannedCompletion = executiveAllocationsForFeature(feature)
+        .filter((allocation) => {
+          const ids = allocationFeatureIds(allocation);
+          const directlyLinked = ids.includes(feature.id);
+          const complete = directlyLinked
+            ? allocationFeatureComplete(allocation, feature.id)
+            : !!allocation.isStageComplete;
+          const allocationStageIndex = PLAN_STAGES.indexOf(allocation.stage);
+          return (
+            complete &&
+            normaliseSprintName(allocation.sprint) &&
+            allocationStageIndex >= finalStageIndex(finalStage)
+          );
+        })
+        .sort((a, b) => {
+          const aSprint = normaliseSprintName(a.sprint);
+          const bSprint = normaliseSprintName(b.sprint);
+          const aEnd = parseDate(executiveSprintDateById.get(aSprint)?.endDate);
+          const bEnd = parseDate(executiveSprintDateById.get(bSprint)?.endDate);
+          return (
+            (aEnd?.getTime() || Number.MAX_SAFE_INTEGER) -
+              (bEnd?.getTime() || Number.MAX_SAFE_INTEGER) ||
+            aSprint.localeCompare(bSprint)
+          );
+        })[0];
+      const finishSprint = normaliseSprintName(plannedCompletion?.sprint);
+      const plannedFinishValue = finishSprint
+        ? executiveSprintDateById.get(finishSprint)?.endDate || ""
+        : "";
+      const workspaceFinishValue =
+        feature["UAT Internal"] ||
+        milestones[feature.workspace]?.["UAT Internal"] ||
+        "";
+      const finishValue = plannedCompletion
+        ? plannedFinishValue
+        : workspaceFinishValue;
+      const finishDate = parseDate(finishValue);
+      const completed = isAtLeast(feature.status, "uat_done");
+      const tone = completed
+        ? "completed"
+        : plannedCompletion && !finishDate
+          ? "track"
+        : !finishDate
+          ? "neutral"
+          : finishDate < TODAY
+            ? "delayed"
+            : finishDate <= NEXT_SPRINT_END
+              ? "due_next"
+              : "track";
+      const label = completed
+        ? "Completed"
+        : plannedCompletion && !finishDate
+          ? "Planned in sprint"
+        : !finishDate
+          ? "No finish date"
+          : finishDate < TODAY
+            ? "Overdue"
+            : finishDate <= NEXT_SPRINT_END
+              ? "Due next sprint"
+              : "Scheduled";
+      return {
+        feature,
+        finishValue,
+        finishDate,
+        finishSprint,
+        targetSource: plannedCompletion ? "feature-plan" : "workspace",
+        tone,
+        label,
+      };
+    })
+    .sort((a, b) => {
+      if (a.finishDate && !b.finishDate) return -1;
+      if (!a.finishDate && b.finishDate) return 1;
+      return (
+        (a.finishDate?.getTime() || 0) - (b.finishDate?.getTime() || 0) ||
+        String(a.finishSprint || "").localeCompare(
+          String(b.finishSprint || ""),
+        ) ||
+        a.feature.feature_name.localeCompare(b.feature.feature_name)
+      );
+    });
   const [editWs, setEditWs] = useState(null);
   return (
     <div className="dashboard">
@@ -1427,44 +1563,59 @@ function ExecutiveDashboard({
         ))}
       </div>
       <div className="two-col">
-        <div className="panel">
-          <h3>Workspace milestone summary</h3>
-          <table>
+        <div className="panel feature-completion-panel">
+          <div className="panel-top">
+            <div>
+              <h3>Feature completion timeline</h3>
+              <p className="muted">
+                Target finish dates from earliest to latest. Completed features
+                are marked separately from upcoming work.
+              </p>
+            </div>
+            <span className="pill-status neutral">
+              {featureCompletionRows.length} features
+            </span>
+          </div>
+          <div className="feature-completion-table-wrap">
+          <table className="compact-table feature-completion-table">
             <thead>
               <tr>
+                <th>Target finish</th>
+                <th>Feature</th>
                 <th>Workspace</th>
-                <th>Build</th>
-                <th>SIT</th>
-                <th>UAT Internal</th>
-                <th>Overall</th>
-                <th>Features</th>
-                <th>Blocking</th>
-                <th>Critical</th>
+                <th>Current status</th>
+                <th>Owner</th>
+                <th>Delivery</th>
               </tr>
             </thead>
             <tbody>
-              {summaries.map((s) => (
+              {featureCompletionRows.map((row) => (
                 <tr
-                  key={s.workspace}
-                  onClick={() => setSelectedWorkspace(s.workspace)}
+                  key={row.feature.id}
+                  onClick={() => setSelectedWorkspace(row.feature.workspace)}
                 >
-                  <td>{s.workspace}</td>
-                  {s.milestones.map((m) => (
-                    <td key={m.key}>
-                      <StatusPill tone={m.health.tone} label={m.health.label} />
-                      <small>{fmtDate(s.dates[m.key])}</small>
-                    </td>
-                  ))}
                   <td>
-                    <StatusPill tone={s.overallTone} label={s.overallLabel} />
+                    <b>
+                      {row.finishDate
+                        ? fmtDate(row.finishValue)
+                        : row.finishSprint || "Not set"}
+                    </b>
+                    <small>
+                      {row.targetSource === "feature-plan"
+                        ? `${row.finishSprint} · Feature completion plan`
+                        : "Workspace target fallback"}
+                    </small>
                   </td>
-                  <td>{s.features.length}</td>
-                  <td>{s.blockers.length}</td>
-                  <td>{s.criticalBlockers}</td>
+                  <td><b>{row.feature.feature_name}</b></td>
+                  <td>{row.feature.workspace}</td>
+                  <td>{STATUS_LABEL[row.feature.status] || "Initial"}</td>
+                  <td>{row.feature.owner || "Not assigned"}</td>
+                  <td><StatusPill tone={row.tone} label={row.label} /></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
         <WorkspaceDetail
           summary={selected}
@@ -1962,6 +2113,63 @@ function DeliveryPlan({
     () => new Map(mappingFeatures.map((f) => [f.id, f])),
     [mappingFeatures],
   );
+  const featuresByNameKey = useMemo(() => {
+    const map = new Map();
+    mappingFeatures.forEach((feature) => {
+      const key = matchKey(feature.feature_name);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(feature);
+    });
+    return map;
+  }, [mappingFeatures]);
+  const resolvedAllocationFeatureIds = (allocation) => {
+    const storedIds = allocationFeatureIds(allocation);
+    const currentIds = storedIds.filter((featureId) =>
+      featureById.has(featureId),
+    );
+    if (currentIds.length) return currentIds;
+    const resolved = [];
+    const allocationWorkspaceKey = matchKey(
+      normaliseWorkspaceName(
+        allocation.workspace ||
+          allocation.workspaceName ||
+          allocation.planningGroup,
+      ),
+    );
+    const addMatches = (name) => {
+      const matches = featuresByNameKey.get(matchKey(name)) || [];
+      const workspaceMatches = allocationWorkspaceKey
+        ? matches.filter(
+            (feature) =>
+              matchKey(normaliseWorkspaceName(feature.workspace)) ===
+              allocationWorkspaceKey,
+          )
+        : [];
+      (workspaceMatches.length ? workspaceMatches : matches).forEach((feature) => {
+        if (!resolved.includes(feature.id)) resolved.push(feature.id);
+      });
+    };
+    (Array.isArray(allocation.possibleMatches)
+      ? allocation.possibleMatches
+      : []
+    ).forEach(addMatches);
+    addMatches(allocation.actualFeatureName);
+    addMatches(allocation.featureName);
+    if (!resolved.length && allocation.actualFeatureName) {
+      const compositeKey = matchKey(allocation.actualFeatureName);
+      mappingFeatures.forEach((feature) => {
+        const featureKey = matchKey(feature.feature_name);
+        if (
+          featureKey &&
+          compositeKey.includes(featureKey) &&
+          !resolved.includes(feature.id)
+        )
+          resolved.push(feature.id);
+      });
+    }
+    return resolved.length ? resolved : storedIds;
+  };
   const allocationById = useMemo(
     () => new Map(allocations.map((a) => [a.id, a])),
     [allocations],
@@ -1985,7 +2193,7 @@ function DeliveryPlan({
   const allocationsByFeatureId = useMemo(() => {
     const map = new Map();
     allocations.forEach((a) =>
-      allocationFeatureIds(a).forEach((featureId) => {
+      resolvedAllocationFeatureIds(a).forEach((featureId) => {
         if (!map.has(featureId)) map.set(featureId, []);
         map
           .get(featureId)
@@ -1997,7 +2205,7 @@ function DeliveryPlan({
       }),
     );
     return map;
-  }, [allocations]);
+  }, [allocations, featureById, featuresByNameKey, mappingFeatures]);
   const standaloneAllocationsByKey = useMemo(() => {
     const map = new Map();
     allocations.forEach((a) => {
@@ -2107,6 +2315,31 @@ function DeliveryPlan({
       .filter(Boolean)
       .sort()
       .at(-1) || "-";
+  const entityPeopleSummary = (feature) => {
+    const daysByOwner = new Map();
+    const isAssignedPerson = (owner) =>
+      !!owner && !/^(?:unassigned|none|n\/?a|-)$/i.test(owner);
+    entityAllocations(feature).forEach((allocation) => {
+      const owner = normalisePersonName(allocation.owner);
+      const days = Number(allocation.days || 0);
+      if (!isAssignedPerson(owner) || days <= 0) return;
+      daysByOwner.set(owner, (daysByOwner.get(owner) || 0) + days);
+    });
+    const boardOwners = Array.from(
+      new Set(
+        splitOwners(feature.owner)
+          .map(normalisePersonName)
+          .filter(isAssignedPerson),
+      ),
+    );
+    const plannedOwners = Array.from(daysByOwner.keys())
+      .filter((owner) => !boardOwners.includes(owner))
+      .sort(
+        (a, b) =>
+          daysByOwner.get(b) - daysByOwner.get(a) || a.localeCompare(b),
+      );
+    return [...boardOwners, ...plannedOwners].join(", ");
+  };
   const entityMilestones = (feature) =>
     STAGE_OPTIONS.map((stage) => {
       const rows = entityAllocations(feature)
@@ -2183,7 +2416,7 @@ function DeliveryPlan({
   const visibleAllocationRows = useMemo(
     () =>
       allocations.flatMap((a) => {
-        const ids = allocationFeatureIds(a);
+        const ids = resolvedAllocationFeatureIds(a);
         if (ids.length <= 1) {
           const featureId = ids[0] || "";
           return [
@@ -2216,7 +2449,7 @@ function DeliveryPlan({
           };
         });
       }),
-    [allocations, featureById],
+    [allocations, featureById, featuresByNameKey, mappingFeatures],
   );
   function remainingFor(owner, sprintId) {
     const key = ownerSprintKey(owner, sprintId);
@@ -2228,6 +2461,35 @@ function DeliveryPlan({
         Number(cap.availableDays || 0) - (daysOffByOwnerSprint.get(key) || 0),
       ) - (plannedByOwnerSprint.get(key) || 0)
     );
+  }
+  function availabilityForSprint(sprintId) {
+    if (!sprintId) return [];
+    return ownerOptions
+      .map((owner) => {
+        const remaining = remainingFor(owner, sprintId);
+        return {
+          owner,
+          remaining,
+          tone:
+            remaining == null
+              ? "unset"
+              : remaining < 0
+                ? "over"
+                : remaining === 0
+                  ? "full"
+                  : remaining <= 3
+                    ? "tight"
+                    : "available",
+        };
+      })
+      .sort((a, b) => {
+        if (a.remaining == null && b.remaining != null) return 1;
+        if (a.remaining != null && b.remaining == null) return -1;
+        return (
+          Number(b.remaining || 0) - Number(a.remaining || 0) ||
+          a.owner.localeCompare(b.owner)
+        );
+      });
   }
   function updateCapacity(owner, availableDays) {
     const ownerKey = normalisePersonName(owner);
@@ -2563,8 +2825,14 @@ function DeliveryPlan({
   }
   function exportPlanningData() {
     const payload = {
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
+      featureCatalog: mappingFeatures.map((feature) => ({
+        id: feature.id,
+        featureName: feature.feature_name,
+        workspace: normaliseWorkspaceName(feature.workspace),
+        isProdSupportStory: !!feature.isProdSupportStory,
+      })),
       customSprints,
       allocations,
       capacities,
@@ -2597,9 +2865,129 @@ function DeliveryPlan({
         const restoredSprints = Array.isArray(data.customSprints)
           ? data.customSprints.map(normaliseSprintName).filter(Boolean)
           : [];
+        const importedCatalogById = new Map(
+          (Array.isArray(data.featureCatalog) ? data.featureCatalog : []).map(
+            (feature) => [feature.id, feature],
+          ),
+        );
+        const currentFeaturesByName = new Map();
+        mappingFeatures.forEach((feature) => {
+          const key = matchKey(feature.feature_name);
+          if (!key) return;
+          if (!currentFeaturesByName.has(key)) currentFeaturesByName.set(key, []);
+          currentFeaturesByName.get(key).push(feature);
+        });
+        const importedFeatureIdMap = new Map();
+        let reboundAllocationCount = 0;
+        const findCurrentFeature = (name, workspace = "") => {
+          const candidates = currentFeaturesByName.get(matchKey(name)) || [];
+          if (candidates.length <= 1) return candidates[0] || null;
+          const workspaceKey = matchKey(normaliseWorkspaceName(workspace));
+          return (
+            candidates.find(
+              (feature) =>
+                matchKey(normaliseWorkspaceName(feature.workspace)) ===
+                workspaceKey,
+            ) || candidates[0]
+          );
+        };
+        const rebindImportedAllocation = (allocation) => {
+          const oldIds = allocationFeatureIds(allocation);
+          const resolvedFeatures = [];
+          const addResolved = (feature) => {
+            if (
+              feature &&
+              !resolvedFeatures.some((candidate) => candidate.id === feature.id)
+            )
+              resolvedFeatures.push(feature);
+          };
+          oldIds.forEach((oldId) => {
+            const currentFeature = featureById.get(oldId);
+            if (currentFeature) {
+              importedFeatureIdMap.set(oldId, oldId);
+              addResolved(currentFeature);
+              return;
+            }
+            const catalogFeature = importedCatalogById.get(oldId);
+            const rebound = catalogFeature
+              ? findCurrentFeature(
+                  catalogFeature.featureName,
+                  catalogFeature.workspace,
+                )
+              : null;
+            if (rebound) {
+              importedFeatureIdMap.set(oldId, rebound.id);
+              addResolved(rebound);
+            }
+          });
+          if (!resolvedFeatures.length) {
+            const savedNames = [
+              ...(Array.isArray(allocation.possibleMatches)
+                ? allocation.possibleMatches
+                : []),
+              allocation.actualFeatureName,
+              allocation.featureName,
+            ].filter(Boolean);
+            savedNames.forEach((name) =>
+              addResolved(
+                findCurrentFeature(
+                  name,
+                  allocation.workspace ||
+                    allocation.workspaceName ||
+                    allocation.planningGroup,
+                ),
+              ),
+            );
+          }
+          if (!resolvedFeatures.length && allocation.actualFeatureName) {
+            const compositeKey = matchKey(allocation.actualFeatureName);
+            mappingFeatures.forEach((feature) => {
+              const featureKey = matchKey(feature.feature_name);
+              if (featureKey && compositeKey.includes(featureKey))
+                addResolved(feature);
+            });
+          }
+          if (!resolvedFeatures.length) return allocation;
+          const resolvedIds = resolvedFeatures.map((feature) => feature.id);
+          oldIds.forEach((oldId, index) => {
+            if (!importedFeatureIdMap.has(oldId))
+              importedFeatureIdMap.set(
+                oldId,
+                resolvedIds[index] || resolvedIds[0],
+              );
+          });
+          const childOutcomes = Object.fromEntries(
+            Object.entries(allocation.childOutcomes || {}).map(
+              ([oldId, complete]) => [
+                importedFeatureIdMap.get(oldId) || oldId,
+                complete,
+              ],
+            ),
+          );
+          const idsChanged = oldIds.some(
+            (oldId, index) =>
+              (importedFeatureIdMap.get(oldId) || oldId) !== oldId ||
+              resolvedIds[index] !== oldId,
+          );
+          if (idsChanged) reboundAllocationCount += 1;
+          return {
+            ...allocation,
+            featureId: resolvedIds[0],
+            featureIds: resolvedIds,
+            matchedFeatureIds: resolvedIds,
+            childOutcomes,
+            actualFeatureName: resolvedFeatures
+              .map((feature) => feature.feature_name)
+              .join(" / "),
+            featureName: resolvedFeatures
+              .map((feature) => feature.feature_name)
+              .join(" / "),
+            mappingStatus: "matched",
+          };
+        };
         const restoredAllocations = data.allocations.flatMap((a) => {
           const sourceStage = a.sourceStage || a.stage;
-          return expandSharedAllocation({
+          return expandSharedAllocation(rebindImportedAllocation({
             ...a,
             sprint: normaliseSprintName(a.sprint),
             owner: normalisePersonName(a.owner),
@@ -2612,7 +3000,7 @@ function DeliveryPlan({
             workspace: normaliseWorkspaceName(a.workspace),
             workspaceName: normaliseWorkspaceName(a.workspaceName),
             planningGroup: normaliseWorkspaceName(a.planningGroup),
-          });
+          }));
         });
         const restoredCapacities = data.capacities.map((c) => ({
           ...c,
@@ -2648,7 +3036,22 @@ function DeliveryPlan({
           : [];
         const restoredFinalStages = Object.fromEntries(
           Object.entries(data.finalStageByFeatureId || {}).map(
-            ([featureId, stage]) => [featureId, normaliseFinalStage(stage)],
+            ([featureId, stage]) => {
+              const catalogFeature = importedCatalogById.get(featureId);
+              const currentFeature = catalogFeature
+                ? findCurrentFeature(
+                    catalogFeature.featureName,
+                    catalogFeature.workspace,
+                  )
+                : null;
+              const currentFeatureId =
+                importedFeatureIdMap.get(featureId) ||
+                currentFeature?.id ||
+                featureId;
+              if (currentFeatureId !== featureId)
+                importedFeatureIdMap.set(featureId, currentFeatureId);
+              return [currentFeatureId, normaliseFinalStage(stage)];
+            },
           ),
         );
         const nextSprint =
@@ -2672,7 +3075,7 @@ function DeliveryPlan({
         setSprint(nextSprint);
         setQuickPlan((q) => ({ ...q, sprint: nextSprint }));
         setImportMessage(
-          `Imported planning backup with ${restoredAllocations.length} allocation(s), ${restoredCapacities.length} capacity row(s), ${restoredDaysOff.length} day-off row(s), ${restoredProdStories.length} Prod Support stories, ${Object.keys(restoredFinalStages).length} final-stage setting(s), and ${restoredSprints.length} custom sprint(s).`,
+          `Imported planning backup with ${restoredAllocations.length} allocation(s), ${restoredCapacities.length} capacity row(s), ${restoredDaysOff.length} day-off row(s), ${restoredProdStories.length} Prod Support stories, ${Object.keys(restoredFinalStages).length} final-stage setting(s), and ${restoredSprints.length} custom sprint(s). Reconnected ${reboundAllocationCount} allocation(s) to this dashboard's feature IDs.`,
         );
       } catch (err) {
         setImportMessage(`Planning data import failed: ${err.message}`);
@@ -3195,18 +3598,15 @@ function DeliveryPlan({
   );
   const kanbanItems = kanbanBase
     .map((feature) => {
-      const through = entityThrough(feature);
-      const next = entityNext(feature);
       const finalStage = featureFinalStage(feature);
       const latestStage = entityIsPlanningComplete(feature)
         ? "Planning Complete"
         : entityLatestPlannedStage(feature);
       return {
         feature,
-        through,
-        next,
         finalStage,
         latest: entityLatestSprint(feature),
+        people: entityPeopleSummary(feature),
         latestStage,
         milestones: entityMilestones(feature),
       };
@@ -3701,11 +4101,10 @@ function DeliveryPlan({
                 col.items.map(
                   ({
                     feature,
-                    through,
-                    next,
                     finalStage,
                     latest,
                     milestones,
+                    people,
                   }) => (
                     <div
                       className={`feature-card compact ${priorityClass(feature.user_count)}`}
@@ -3757,9 +4156,8 @@ function DeliveryPlan({
                           <span>No sprint milestones yet</span>
                         )}
                       </div>
-                      <div className="card-meta">
-                        <span>Through: {through}</span>
-                        <span>Next: {next}</span>
+                      <div className="card-meta card-people">
+                        <span>People: {people || "Not assigned"}</span>
                       </div>
                       <div className="card-meta">
                         <span>Latest: {latest}</span>
@@ -4167,15 +4565,62 @@ function DeliveryPlan({
       <div className={`reconcile-total ${reconciledDays === originalSourceDays ? "balanced" : "unbalanced"}`}>Planning lines total: {reconciledDays}d / original {originalSourceDays}d {reconciledDays === originalSourceDays ? "(reconciled)" : "(split total differs from source)"}</div>
       <div className="reconcile-table-wrap"><table className="compact-table reconcile-table">
         <thead><tr><th>Child Feature</th><th>Sprint</th><th>Owner</th><th>Stage</th><th>Days</th><th>Outcome</th><th>Delete</th></tr></thead>
-        <tbody>{reconciliationLines.map(line => <tr key={line.id}>
-          <td><select value={line.featureId || ""} onChange={e => updateAllocationFeature(line.id, e.target.value)}><option value="">Select feature</option>{mappingFeatures.map(f => <option key={f.id} value={f.id}>{f.feature_name}</option>)}</select></td>
-          <td><select value={line.sprint || ""} onChange={e => updateAllocation(line.id, { sprint: e.target.value })}>{matrixSprints.map(s => <option key={s}>{s}</option>)}</select></td>
-          <td><select value={line.owner || ""} onChange={e => updateAllocation(line.id, { owner: e.target.value })}><option value="">Unassigned</option>{ownerOptions.map(o => <option key={o}>{o}</option>)}</select></td>
-          <td><select value={line.stage || NEEDS_MAPPING_STAGE} onChange={e => updateAllocation(line.id, { stage: e.target.value })}>{STAGE_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></td>
-          <td><input type="number" min="0" value={Number(line.days || 0)} onChange={e => updateAllocation(line.id, { days: Number(e.target.value || 0), sharedVisibility: false })}/></td>
-          <td><select value={allocationOutcomeComplete(line) ? "complete" : "planned"} onChange={e => updateAllocationOutcome(line, e.target.value === "complete")}><option value="planned">Planned</option><option value="complete">Expected complete</option></select></td>
-          <td><button onClick={() => deletePlanningLine(line.id)}>Delete</button></td>
-        </tr>)}</tbody>
+        <tbody>{reconciliationLines.map(line => {
+          const availability = availabilityForSprint(line.sprint);
+          const selectedAvailability = availability.find(
+            (row) => normalisePersonName(row.owner) === normalisePersonName(line.owner),
+          );
+          return <React.Fragment key={line.id}>
+            <tr>
+              <td><select value={line.featureId || ""} onChange={e => updateAllocationFeature(line.id, e.target.value)}><option value="">Select feature</option>{mappingFeatures.map(f => <option key={f.id} value={f.id}>{f.feature_name}</option>)}</select></td>
+              <td><select value={line.sprint || ""} onChange={e => updateAllocation(line.id, { sprint: e.target.value })}>{matrixSprints.map(s => <option key={s}>{s}</option>)}</select></td>
+              <td><select value={line.owner || ""} onChange={e => updateAllocation(line.id, { owner: e.target.value })}><option value="">Unassigned</option>{ownerOptions.map(o => <option key={o}>{o}</option>)}</select></td>
+              <td><select value={line.stage || NEEDS_MAPPING_STAGE} onChange={e => updateAllocation(line.id, { stage: e.target.value })}>{STAGE_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></td>
+              <td><input type="number" min="0" value={Number(line.days || 0)} onChange={e => updateAllocation(line.id, { days: Number(e.target.value || 0), sharedVisibility: false })}/></td>
+              <td><select value={allocationOutcomeComplete(line) ? "complete" : "planned"} onChange={e => updateAllocationOutcome(line, e.target.value === "complete")}><option value="planned">Planned</option><option value="complete">Expected complete</option></select></td>
+              <td><button onClick={() => deletePlanningLine(line.id)}>Delete</button></td>
+            </tr>
+            <tr className="reconcile-availability-row">
+              <td colSpan="7">
+                <div className="capacity-chip-section reconcile-capacity">
+                  <div className="reconcile-capacity-heading">
+                    <b>Team availability · {line.sprint || "Select a sprint"}</b>
+                    {selectedAvailability && (
+                      <span className={`selected-capacity ${selectedAvailability.tone}`}>
+                        {selectedAvailability.owner}: {selectedAvailability.remaining == null
+                          ? "capacity not set"
+                          : `${selectedAvailability.remaining}d remaining after this allocation`}
+                      </span>
+                    )}
+                  </div>
+                  {availability.length ? (
+                    <div className="capacity-chip-list reconcile-capacity-list">
+                      {availability.map((row) => (
+                        <button
+                          type="button"
+                          key={row.owner}
+                          className={`capacity-chip ${row.tone}${normalisePersonName(row.owner) === normalisePersonName(line.owner) ? " selected" : ""}`}
+                          onClick={() => updateAllocation(line.id, { owner: row.owner })}
+                          title={`Assign ${row.owner} to this planning line`}
+                        >
+                          <b>{row.owner}</b>
+                          <span>{row.remaining == null ? "not set" : `${row.remaining}d`}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <small>No team members are available for this sprint.</small>
+                  )}
+                  {selectedAvailability?.remaining < 0 && (
+                    <p className="capacity-warning">
+                      Warning: {selectedAvailability.owner} is over capacity by {Math.abs(selectedAvailability.remaining)} day(s) in {line.sprint}.
+                    </p>
+                  )}
+                </div>
+              </td>
+            </tr>
+          </React.Fragment>;
+        })}</tbody>
       </table></div>
       <div className="modal-actions reconcile-actions"><button onClick={() => { deleteAllocationSource(allocationSourceId(editingAllocationRow)); setEditingAllocation(null); }}>Delete Source Allocation</button><button onClick={() => addReconcileLine(editingAllocationRow)}>Add Person / Split</button><button onClick={() => setEditingAllocation(null)}>Done</button></div>
     </div></div>
@@ -5115,6 +5560,10 @@ function App() {
       {mode === "executive" && (
         <ExecutiveDashboard
           features={features}
+          allocations={allocations}
+          customSprints={customSprints}
+          sprintDates={sprintDates}
+          finalStageByFeatureId={finalStageByFeatureId}
           milestones={milestones}
           setMilestones={setMilestones}
           workspaces={workspaces}

@@ -55,6 +55,40 @@ const PLAN_STAGES = [
 ];
 const DEFAULT_FINAL_STAGE = "UAT";
 const STAGE_OPTIONS = [...PLAN_STAGES, NEEDS_MAPPING_STAGE];
+const Q2_SPRINT_DATES = [
+  ["26Q2S1", "2026-10-07", "2026-10-20"],
+  ["26Q2S2", "2026-10-21", "2026-11-03"],
+  ["26Q2S3", "2026-11-04", "2026-11-17"],
+  ["26Q2S4", "2026-11-18", "2026-12-01"],
+  ["26Q2S5", "2026-12-02", "2026-12-15"],
+  ["26Q2S6", "2026-12-16", "2026-12-24"],
+].map(([sprint, startDate, endDate]) => ({ sprint, startDate, endDate }));
+const Q1_SPRINTS = [
+  "26Q1S1",
+  "26Q1S2",
+  "26Q1S3",
+  "26Q1S4",
+  "26Q1S5",
+  "26Q1S6",
+  "26Q1S7",
+];
+const REQUIRED_SPRINTS = [
+  ...Q1_SPRINTS,
+  ...Q2_SPRINT_DATES.map((row) => row.sprint),
+];
+const Q2_TEAM = [
+  "Andrew",
+  "Annie",
+  "Encarmine",
+  "Fassahat",
+  "Mihir",
+  "Ravi",
+  "Sebin",
+  "Sujit",
+  "Tabish",
+  "Wasim",
+  "Zhi",
+];
 const READY_NEXT_STAGE = {
   build_done: "Ready for SIT",
   sit_done: "Ready for Deployment",
@@ -333,6 +367,11 @@ function normaliseSprintName(v, fallbackQuarter = "26Q1") {
   if (quarterMatch) return `${quarterMatch[1]}S${quarterMatch[2]}`;
   const sprintMatch = raw.match(/(?:sprint|s)\s*(\d+)/i);
   return sprintMatch ? `${fallbackQuarter}S${sprintMatch[1]}` : squashed;
+}
+function quarterFromSprint(sprintId, fallback = "26Q1") {
+  return (
+    normaliseSprintName(sprintId).match(/^(\d{2}Q\d)S\d+$/)?.[1] || fallback
+  );
 }
 function normalisePersonName(v) {
   const name = String(v || "")
@@ -754,7 +793,10 @@ function addDays(date, days) {
   return d;
 }
 function defaultSprintDateRange(sprintId) {
-  const match = String(sprintId || "").match(/^26Q1S(\d+)$/i);
+  const sprintKey = normaliseSprintName(sprintId);
+  const q2 = Q2_SPRINT_DATES.find((row) => row.sprint === sprintKey);
+  if (q2) return { ...q2 };
+  const match = sprintKey.match(/^26Q1S(\d+)$/i);
   if (!match) return null;
   const index = Number(match[1]) - 1;
   const start = addDays(new Date(2026, 6, 1), index * 14);
@@ -1292,6 +1334,7 @@ function ExecutiveDashboard({
     Array.from(
       new Set(
         [
+          ...REQUIRED_SPRINTS,
           ...customSprints,
           ...allocations.map((allocation) => allocation.sprint),
         ]
@@ -2018,6 +2061,7 @@ function DeliveryPlan({
   setProdSupportStories,
   finalStageByFeatureId,
   setFinalStageByFeatureId,
+  onAddFeature,
 }) {
   const sprintOptions = useMemo(() => {
     const fromData = Array.from(
@@ -2031,10 +2075,26 @@ function DeliveryPlan({
           .filter(Boolean),
       ),
     );
-    return fromData.length
-      ? fromData.sort()
-      : ["26Q1S1", "26Q1S2", "26Q1S3", "26Q1S4", "26Q1S5", "26Q1S6", "26Q1S7"];
+    return fromData.sort();
   }, [customSprints, capacities, allocations]);
+  const quarterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          "26Q1",
+          "26Q2",
+          ...sprintOptions
+            .map((s) => String(s).match(/^(\d{2}Q\d)S\d+$/)?.[1])
+            .filter(Boolean),
+        ]),
+      ).sort(),
+    [sprintOptions],
+  );
+  const [quarter, setQuarter] = useState("26Q1");
+  const visibleSprintOptions = useMemo(
+    () => sprintOptions.filter((s) => s.startsWith(quarter)),
+    [sprintOptions, quarter],
+  );
   const [sprint, setSprint] = useState(sprintOptions[0] || "26Q1S1");
   const ownerOptions = useMemo(
     () =>
@@ -2056,10 +2116,19 @@ function DeliveryPlan({
   const [planWorkspaceFilter, setPlanWorkspaceFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
   const [allocationOwnerFilter, setAllocationOwnerFilter] = useState("ALL");
+  const [allocationSprintFilter, setAllocationSprintFilter] = useState("ALL");
   const [warning, setWarning] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [importDiagnostics, setImportDiagnostics] = useState([]);
   const [newSprint, setNewSprint] = useState("");
+  const [showAddFeature, setShowAddFeature] = useState(false);
+  const [featureDraft, setFeatureDraft] = useState({
+    feature_name: "",
+    workspace: "",
+    owner: "",
+    user_count: "",
+    notes: "",
+  });
   const [selectedPlanFeature, setSelectedPlanFeature] = useState(null);
   const [editingAllocation, setEditingAllocation] = useState(null);
   const [showAllDiagnostics, setShowAllDiagnostics] = useState(false);
@@ -2089,6 +2158,57 @@ function DeliveryPlan({
       owner: q.owner || ownerOptions[0] || "",
     }));
   }, [sprintOptions, ownerOptions]);
+  useEffect(() => {
+    const q2Sprints = Q2_SPRINT_DATES.map((row) => row.sprint);
+    setCustomSprints((prev) =>
+      Array.from(new Set([...prev.map(normaliseSprintName), ...q2Sprints])).sort(),
+    );
+    setSprintDates((prev) => {
+      const existing = new Set(prev.map((row) => normaliseSprintName(row.sprint)));
+      return [
+        ...prev,
+        ...Q2_SPRINT_DATES.filter((row) => !existing.has(row.sprint)),
+      ];
+    });
+    setCapacities((prev) => {
+      const existing = new Set(
+        prev.map(
+          (row) =>
+            `${normaliseSprintName(row.sprint)}||${normalisePersonName(row.owner)}`,
+        ),
+      );
+      const seeded = Q2_SPRINT_DATES.flatMap((row) => {
+        const workingDays = workingDaysBetween(row.startDate, row.endDate);
+        return Q2_TEAM.flatMap((owner) => {
+          const key = `${row.sprint}||${owner}`;
+          if (existing.has(key)) return [];
+          return [{
+            sprint: row.sprint,
+            owner,
+            availableDays: owner === "Sujit" ? workingDays / 2 : workingDays,
+          }];
+        });
+      });
+      return seeded.length ? [...prev, ...seeded] : prev;
+    });
+  }, [setCapacities, setCustomSprints, setSprintDates]);
+  useEffect(() => {
+    const nextSprint = visibleSprintOptions[0];
+    if (!nextSprint) return;
+    if (!visibleSprintOptions.includes(sprint)) setSprint(nextSprint);
+    setQuickPlan((current) =>
+      visibleSprintOptions.includes(current.sprint)
+        ? current
+        : { ...current, sprint: nextSprint },
+    );
+  }, [quarter, visibleSprintOptions, sprint]);
+  useEffect(() => {
+    if (
+      allocationSprintFilter !== "ALL" &&
+      !visibleSprintOptions.includes(allocationSprintFilter)
+    )
+      setAllocationSprintFilter("ALL");
+  }, [visibleSprintOptions, allocationSprintFilter]);
   const prodSupportFeatures = useMemo(
     () => prodSupportStories.map(prodSupportStoryFeature),
     [prodSupportStories],
@@ -3700,7 +3820,9 @@ function DeliveryPlan({
     setQuickPlan((q) => ({
       ...q,
       stage: stage === "Planning Complete" ? "UAT" : stage,
-      sprint: q.sprint === "ALL" ? sprintOptions[0] : q.sprint,
+      sprint: visibleSprintOptions.includes(q.sprint)
+        ? q.sprint
+        : visibleSprintOptions[0],
       owner: q.owner || ownerOptions[0] || "",
       days: q.days || 1,
       isStageComplete: false,
@@ -3717,6 +3839,9 @@ function DeliveryPlan({
   const filteredAllocations = visibleAllocationRows
     .filter(
       (a) =>
+        (!a.sprint || String(a.sprint).startsWith(quarter)) &&
+        (allocationSprintFilter === "ALL" ||
+          a.sprint === allocationSprintFilter) &&
         (ownerFilter === "ALL" || a.owner === ownerFilter) &&
         (allocationOwnerFilter === "ALL" ||
           a.owner === allocationOwnerFilter) &&
@@ -3732,7 +3857,7 @@ function DeliveryPlan({
   const matrixSprints = Array.from(
     new Set(
       [
-        ...sprintOptions,
+        ...visibleSprintOptions,
         ...filteredAllocations.map((a) => a.sprint || "Unscheduled"),
       ].filter(Boolean),
     ),
@@ -4069,8 +4194,7 @@ function DeliveryPlan({
         <div>
           <h3>Planning Kanban</h3>
           <p className="muted">
-            Shows the full planning timeline across all imported and locally
-            created sprints.
+            Shows the planning timeline for {quarter}.
           </p>
         </div>
         <div className="mini-stats">
@@ -4186,6 +4310,26 @@ function DeliveryPlan({
           </p>
         </div>
         <div className="toolbar-left">
+          <label className="linked-filter">
+            Quarter
+            <select value={quarter} onChange={(e) => setQuarter(e.target.value)}>
+              {quarterOptions.map((q) => (
+                <option key={q}>{q}</option>
+              ))}
+            </select>
+          </label>
+          <label className="linked-filter">
+            Sprint
+            <select
+              value={allocationSprintFilter}
+              onChange={(e) => setAllocationSprintFilter(e.target.value)}
+            >
+              <option value="ALL">All {quarter} sprints</option>
+              {visibleSprintOptions.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </label>
           <select
             value={allocationOwnerFilter}
             onChange={(e) => setAllocationOwnerFilter(e.target.value)}
@@ -4410,6 +4554,23 @@ function DeliveryPlan({
             </label>
           )}
           <label>
+            Quarter
+            <select
+              value={quarterFromSprint(editingAllocationRow.sprint, quarter)}
+              onChange={(e) =>
+                updateAllocation(editingAllocationRow.id, {
+                  sprint:
+                    sprintOptions.find((s) => s.startsWith(e.target.value)) ||
+                    "",
+                })
+              }
+            >
+              {quarterOptions.map((q) => (
+                <option key={q}>{q}</option>
+              ))}
+            </select>
+          </label>
+          <label>
             Sprint
             <select
               value={editingAllocationRow.sprint || ""}
@@ -4419,9 +4580,15 @@ function DeliveryPlan({
                 })
               }
             >
-              {matrixSprints.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
+              {sprintOptions
+                .filter((s) =>
+                  s.startsWith(
+                    quarterFromSprint(editingAllocationRow.sprint, quarter),
+                  ),
+                )
+                .map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
             </select>
           </label>
           <label>
@@ -4787,6 +4954,25 @@ function DeliveryPlan({
                 </select>
               </label>
               <label>
+                Quarter
+                <select
+                  value={quarterFromSprint(quickPlan.sprint, quarter)}
+                  onChange={(e) =>
+                    setQuickPlan({
+                      ...quickPlan,
+                      sprint:
+                        sprintOptions.find((s) =>
+                          s.startsWith(e.target.value),
+                        ) || "",
+                    })
+                  }
+                >
+                  {quarterOptions.map((q) => (
+                    <option key={q}>{q}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 Sprint
                 <select
                   value={quickPlan.sprint}
@@ -4794,9 +4980,15 @@ function DeliveryPlan({
                     setQuickPlan({ ...quickPlan, sprint: e.target.value })
                   }
                 >
-                  {sprintOptions.map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
+                  {sprintOptions
+                    .filter((s) =>
+                      s.startsWith(
+                        quarterFromSprint(quickPlan.sprint, quarter),
+                      ),
+                    )
+                    .map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
                 </select>
               </label>
               <label>
@@ -4899,9 +5091,17 @@ function DeliveryPlan({
             <p className="muted">Capacity input for the selected sprint.</p>
           </div>
           <label>
+            Capacity Quarter
+            <select value={quarter} onChange={(e) => setQuarter(e.target.value)}>
+              {quarterOptions.map((q) => (
+                <option key={q}>{q}</option>
+              ))}
+            </select>
+          </label>
+          <label>
             Capacity Sprint
             <select value={sprint} onChange={(e) => setSprint(e.target.value)}>
-              {sprintOptions.map((s) => (
+              {visibleSprintOptions.map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>
@@ -4949,6 +5149,14 @@ function DeliveryPlan({
           </div>
         </div>
         <div className="days-off-form">
+          <label>
+            Leave Sprint
+            <select value={sprint} onChange={(e) => setSprint(e.target.value)}>
+              {visibleSprintOptions.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          </label>
           <label>
             Person
             <input
@@ -5003,7 +5211,9 @@ function DeliveryPlan({
         <details className="sprint-date-setup">
           <summary>Sprint date setup</summary>
           <div className="sprint-date-grid">
-            {effectiveSprintDates.slice(0, 7).map((row) => (
+            {effectiveSprintDates
+              .filter((row) => row.sprint.startsWith(quarter))
+              .map((row) => (
               <div key={row.sprint} className="sprint-date-row">
                 <b>{row.sprint}</b>
                 <input
@@ -5114,6 +5324,18 @@ function DeliveryPlan({
             onChange={importPlanningData}
           />
           <select
+            aria-label="Planning quarter"
+            value={quarter}
+            onChange={(e) => setQuarter(e.target.value)}
+          >
+            {quarterOptions.map((q) => (
+              <option key={q} value={q}>
+                {q} Planning
+              </option>
+            ))}
+          </select>
+          <button onClick={() => setShowAddFeature(true)}>Add Feature</button>
+          <select
             value={ownerFilter}
             onChange={(e) => setOwnerFilter(e.target.value)}
           >
@@ -5141,7 +5363,7 @@ function DeliveryPlan({
             onKeyDown={(e) => {
               if (e.key === "Enter") addSprint();
             }}
-            placeholder="Add sprint, e.g. 26Q2S1"
+            placeholder={`Add sprint, e.g. ${quarter}S1`}
           />
           <button onClick={addSprint}>Add Sprint</button>
         </div>
@@ -5155,6 +5377,109 @@ function DeliveryPlan({
       {capacityTools}
       {reconcileAllocationModal}
       {planModal}
+      {showAddFeature && (
+        <div className="modal">
+          <div className="modal-card small">
+            <div className="panel-top">
+              <div>
+                <div className="eyebrow">Delivery Plan</div>
+                <h2>Add feature for planning</h2>
+              </div>
+              <button onClick={() => setShowAddFeature(false)}>Close</button>
+            </div>
+            <div className="form-grid">
+              <label className="full">
+                Feature name
+                <input
+                  autoFocus
+                  value={featureDraft.feature_name}
+                  onChange={(e) =>
+                    setFeatureDraft({
+                      ...featureDraft,
+                      feature_name: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Workspace
+                <input
+                  list="planning-workspaces"
+                  value={featureDraft.workspace}
+                  onChange={(e) =>
+                    setFeatureDraft({ ...featureDraft, workspace: e.target.value })
+                  }
+                />
+                <datalist id="planning-workspaces">
+                  {allFeatureWorkspaces.map((workspace) => (
+                    <option key={workspace} value={workspace} />
+                  ))}
+                </datalist>
+              </label>
+              <label>
+                Owner
+                <input
+                  list="capacity-owners"
+                  value={featureDraft.owner}
+                  onChange={(e) =>
+                    setFeatureDraft({ ...featureDraft, owner: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                User count
+                <input
+                  type="number"
+                  min="0"
+                  value={featureDraft.user_count}
+                  onChange={(e) =>
+                    setFeatureDraft({
+                      ...featureDraft,
+                      user_count: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="full">
+                Notes
+                <textarea
+                  value={featureDraft.notes}
+                  onChange={(e) =>
+                    setFeatureDraft({ ...featureDraft, notes: e.target.value })
+                  }
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowAddFeature(false)}>Cancel</button>
+              <button
+                disabled={!featureDraft.feature_name.trim()}
+                onClick={() => {
+                  onAddFeature({
+                    id: id(),
+                    feature_name: featureDraft.feature_name.trim(),
+                    workspace: featureDraft.workspace.trim() || "Unassigned",
+                    owner: featureDraft.owner.trim(),
+                    user_count: Number(featureDraft.user_count || 0),
+                    status: "initial",
+                    notes: featureDraft.notes.trim(),
+                  });
+                  setFeatureDraft({
+                    feature_name: "",
+                    workspace: "",
+                    owner: "",
+                    user_count: "",
+                    notes: "",
+                  });
+                  setShowAddFeature(false);
+                }}
+              >
+                Add to plan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5616,6 +5941,7 @@ function App() {
           setProdSupportStories={setProdSupportStories}
           finalStageByFeatureId={finalStageByFeatureId}
           setFinalStageByFeatureId={setFinalStageByFeatureId}
+          onAddFeature={addFeature}
         />
       )}{" "}
       {mode === "sprintReview" && (

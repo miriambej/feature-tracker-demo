@@ -89,6 +89,7 @@ const Q2_TEAM = [
   "Wasim",
   "Zhi",
 ];
+const WHOLE_TEAM_VALUE = "__whole_team__";
 const READY_NEXT_STAGE = {
   build_done: "Ready for SIT",
   sit_done: "Ready for Deployment",
@@ -2062,6 +2063,8 @@ function DeliveryPlan({
   finalStageByFeatureId,
   setFinalStageByFeatureId,
   onAddFeature,
+  onEditFeature,
+  onDeleteFeature,
 }) {
   const sprintOptions = useMemo(() => {
     const fromData = Array.from(
@@ -2122,6 +2125,8 @@ function DeliveryPlan({
   const [importDiagnostics, setImportDiagnostics] = useState([]);
   const [newSprint, setNewSprint] = useState("");
   const [showAddFeature, setShowAddFeature] = useState(false);
+  const [featurePendingDelete, setFeaturePendingDelete] = useState(null);
+  const [capacityTooltip, setCapacityTooltip] = useState(null);
   const [featureDraft, setFeatureDraft] = useState({
     feature_name: "",
     workspace: "",
@@ -2144,6 +2149,17 @@ function DeliveryPlan({
     devOpsId: "",
     notes: "",
   });
+  function showCapacityTooltip(event, text, owner, sprintId) {
+    if (!text) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setCapacityTooltip({
+      text,
+      owner,
+      sprintId,
+      left: Math.min(window.innerWidth - 170, Math.max(170, rect.left + rect.width / 2)),
+      top: Math.max(12, rect.top - 10),
+    });
+  }
   const [quickPlan, setQuickPlan] = useState({
     stage: "Requirement",
     sprint: sprintOptions[0] || "26Q1S1",
@@ -2494,6 +2510,29 @@ function DeliveryPlan({
     () => effectiveSprintDateRows(sprintOptions, sprintDates),
     [sprintOptions, sprintDates],
   );
+  function capacityDayOffDetails(owner, sprintId) {
+    const matches = daysOff.filter((row) => {
+      const rowSprint =
+        normaliseSprintName(row.sprint) ||
+        sprintForDateRange(row.startDate, row.endDate, effectiveSprintDates);
+      return (
+        normalisePersonName(row.owner) === normalisePersonName(owner) &&
+        rowSprint === normaliseSprintName(sprintId)
+      );
+    });
+    return matches
+      .map((row) => {
+        const hasDates = !!row.startDate;
+        const dateText = hasDates
+          ? row.endDate && row.endDate !== row.startDate
+            ? `${fmtDate(row.startDate)} to ${fmtDate(row.endDate)}`
+            : fmtDate(row.startDate)
+          : "";
+        if (dateText && row.note) return `${dateText} — ${row.note}`;
+        return dateText || row.note || `${Number(row.days || 0)} day(s) off`;
+      })
+      .join("; ");
+  }
   const daysOffByOwnerSprint = useMemo(() => {
     const map = new Map();
     daysOff.forEach((row) => {
@@ -2551,7 +2590,16 @@ function DeliveryPlan({
             : allocated === available
               ? "complete"
               : "pending";
-      return { sprint: sprintId, base, off, available, allocated, remaining, tone };
+      return {
+        sprint: sprintId,
+        base,
+        off,
+        offDetails: capacityDayOffDetails(owner, sprintId),
+        available,
+        allocated,
+        remaining,
+        tone,
+      };
     }),
   }));
   const capacityOverviewTotals = visibleSprintOptions.map((sprintId) => {
@@ -2668,15 +2716,22 @@ function DeliveryPlan({
     });
   }
   function addDayOff() {
-    const owner = normalisePersonName(dayOffForm.owner);
+    const isWholeTeam = dayOffForm.owner === WHOLE_TEAM_VALUE;
+    const targetOwners = isWholeTeam
+      ? ownerOptions
+      : [normalisePersonName(dayOffForm.owner)].filter(Boolean);
     const startDate = dayOffForm.startDate;
     const endDate = dayOffForm.endDate || startDate;
-    const rows = splitDaysOffBySprint(
-      owner,
-      startDate,
-      endDate,
-      effectiveSprintDates,
-      dayOffForm.note || "",
+    const groupId = isWholeTeam ? id() : "";
+    const note = dayOffForm.note || (isWholeTeam ? "Whole team day off" : "");
+    const rows = targetOwners.flatMap((owner) =>
+      splitDaysOffBySprint(
+        owner,
+        startDate,
+        endDate,
+        effectiveSprintDates,
+        note,
+      ).map((row) => ({ ...row, groupId, isWholeTeam })),
     );
     if (!rows.length) {
       setDayOffWarning(
@@ -2689,8 +2744,14 @@ function DeliveryPlan({
     setSprint(rows[0].sprint);
     setDayOffForm({ owner: "", startDate: "", endDate: "", note: "" });
   }
-  function deleteDayOff(dayOffId) {
-    setDaysOff((prev) => prev.filter((row) => row.id !== dayOffId));
+  function deleteDayOff(dayOffRow) {
+    setDaysOff((prev) =>
+      prev.filter((row) =>
+        dayOffRow.groupId
+          ? row.groupId !== dayOffRow.groupId
+          : row.id !== dayOffRow.id,
+      ),
+    );
   }
   function updateSprintDates(sprintId, patch) {
     const sprintKey = normaliseSprintName(sprintId);
@@ -4503,7 +4564,33 @@ function DeliveryPlan({
                     return (
                       <tr key={row.owner}>
                         <td>{row.owner}</td>
-                        <td title={cell?.off ? `${cell.off} day(s) off` : ""}>
+                        <td
+                          className={cell?.offDetails ? "capacity-hover-target" : ""}
+                          tabIndex={cell?.offDetails ? 0 : undefined}
+                          aria-label={
+                            cell?.offDetails
+                              ? `${row.owner}, ${sprintId}: ${cell.offDetails}`
+                              : undefined
+                          }
+                          onMouseEnter={(event) =>
+                            showCapacityTooltip(
+                              event,
+                              cell?.offDetails,
+                              row.owner,
+                              sprintId,
+                            )
+                          }
+                          onMouseLeave={() => setCapacityTooltip(null)}
+                          onFocus={(event) =>
+                            showCapacityTooltip(
+                              event,
+                              cell?.offDetails,
+                              row.owner,
+                              sprintId,
+                            )
+                          }
+                          onBlur={() => setCapacityTooltip(null)}
+                        >
                           {cell?.available ?? "-"}
                         </td>
                         <td className={`allocation-status ${cell?.tone || "unset"}`}>
@@ -4919,7 +5006,28 @@ function DeliveryPlan({
               users
             </small>
           </div>
-          <button onClick={() => setSelectedPlanFeature(null)}>Close</button>
+          <div className="feature-plan-actions">
+            {!selectedPlanFeature.planningKey &&
+              !selectedPlanFeature.isProdSupportStory && (
+                <>
+                  <button
+                    onClick={() => {
+                      onEditFeature(selectedPlanFeature);
+                      setSelectedPlanFeature(null);
+                    }}
+                  >
+                    Edit Feature
+                  </button>
+                  <button
+                    className="danger-button"
+                    onClick={() => setFeaturePendingDelete(selectedPlanFeature)}
+                  >
+                    Delete Feature
+                  </button>
+                </>
+              )}
+            <button onClick={() => setSelectedPlanFeature(null)}>Close</button>
+          </div>
         </div>
         <div className="final-stage-control">
           <label>
@@ -4963,7 +5071,39 @@ function DeliveryPlan({
               selectedAllocations.map((a) => (
                 <tr key={a.id}>
                   <td>
-                    <b>{a.sprint || "Unscheduled"}</b>
+                    <div className="allocation-sprint-edit">
+                      <select
+                        aria-label="Allocation quarter"
+                        value={quarterFromSprint(a.sprint, quarter)}
+                        onChange={(e) =>
+                          updateAllocation(a.id, {
+                            sprint:
+                              sprintOptions.find((s) =>
+                                s.startsWith(e.target.value),
+                              ) || "",
+                          })
+                        }
+                      >
+                        {quarterOptions.map((q) => (
+                          <option key={q}>{q}</option>
+                        ))}
+                      </select>
+                      <select
+                        aria-label="Allocation sprint"
+                        value={a.sprint || ""}
+                        onChange={(e) =>
+                          updateAllocation(a.id, { sprint: e.target.value })
+                        }
+                      >
+                        {sprintOptions
+                          .filter((s) =>
+                            s.startsWith(quarterFromSprint(a.sprint, quarter)),
+                          )
+                          .map((s) => (
+                            <option key={s}>{s}</option>
+                          ))}
+                      </select>
+                    </div>
                   </td>
                   <td>
                     <select
@@ -4976,17 +5116,6 @@ function DeliveryPlan({
                         <option key={s}>{s}</option>
                       ))}
                     </select>
-                  </td>
-                  <td>
-                    {remainingFor(a.owner, a.sprint) == null ? (
-                      <small>No capacity set</small>
-                    ) : remainingFor(a.owner, a.sprint) < 0 ? (
-                      <small className="capacity-negative">
-                        Over by {Math.abs(remainingFor(a.owner, a.sprint))}d
-                      </small>
-                    ) : (
-                      <small>{remainingFor(a.owner, a.sprint)}d remaining</small>
-                    )}
                   </td>
                   <td>
                     <select
@@ -5027,6 +5156,17 @@ function DeliveryPlan({
                       <option value="planned">Planned</option>
                       <option value="complete">Expected complete</option>
                     </select>
+                  </td>
+                  <td>
+                    {remainingFor(a.owner, a.sprint) == null ? (
+                      <small>No capacity set</small>
+                    ) : remainingFor(a.owner, a.sprint) < 0 ? (
+                      <small className="capacity-negative">
+                        Over by {Math.abs(remainingFor(a.owner, a.sprint))}d
+                      </small>
+                    ) : (
+                      <small>{remainingFor(a.owner, a.sprint)}d remaining</small>
+                    )}
                   </td>
                   <td>
                     <button onClick={() => deleteAllocation(a.id)}>
@@ -5302,13 +5442,18 @@ function DeliveryPlan({
           </label>
           <label>
             Person
-            <input
-              list="capacity-owners"
+            <select
               value={dayOffForm.owner}
               onChange={(e) =>
                 setDayOffForm({ ...dayOffForm, owner: e.target.value })
               }
-            />
+            >
+              <option value="">Select person</option>
+              <option value={WHOLE_TEAM_VALUE}>Whole team</option>
+              {ownerOptions.map((owner) => (
+                <option key={owner} value={owner}>{owner}</option>
+              ))}
+            </select>
           </label>
           <label>
             Start Date
@@ -5345,11 +5490,6 @@ function DeliveryPlan({
           </label>
           <button onClick={addDayOff}>Add</button>
         </div>
-        <datalist id="capacity-owners">
-          {ownerOptions.map((o) => (
-            <option key={o} value={o} />
-          ))}
-        </datalist>
         {dayOffWarning && <p className="capacity-warning">{dayOffWarning}</p>}
         <details className="sprint-date-setup">
           <summary>Sprint date setup</summary>
@@ -5419,7 +5559,9 @@ function DeliveryPlan({
                   </td>
                   <td>{row.note || "-"}</td>
                   <td>
-                    <button onClick={() => deleteDayOff(row.id)}>Remove</button>
+                    <button onClick={() => deleteDayOff(row)}>
+                      {row.groupId ? "Remove team day" : "Remove"}
+                    </button>
                   </td>
                 </tr>
               ))
@@ -5521,6 +5663,54 @@ function DeliveryPlan({
       {capacityTools}
       {reconcileAllocationModal}
       {planModal}
+      {capacityTooltip && (
+        <div
+          className="modern-capacity-tooltip"
+          role="tooltip"
+          style={{ left: capacityTooltip.left, top: capacityTooltip.top }}
+        >
+          <div className="modern-tooltip-heading">
+            <b>{capacityTooltip.owner}</b>
+            <span>{capacityTooltip.sprintId}</span>
+          </div>
+          <div className="modern-tooltip-list">
+            {capacityTooltip.text.split("; ").map((entry, index) => (
+              <div className="modern-tooltip-body" key={`${entry}-${index}`}>
+                <span className="modern-tooltip-dot" />
+                <span>{entry}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {featurePendingDelete && (
+        <div className="modal confirmation-modal">
+          <div className="modal-card small">
+            <div className="eyebrow">Confirm deletion</div>
+            <h2>Delete this feature?</h2>
+            <p>
+              <b>{featurePendingDelete.feature_name}</b> and its planning
+              allocations will be permanently removed from this tracker.
+            </p>
+            <p className="capacity-warning">
+              This action cannot be undone. Cancel if you selected it by mistake.
+            </p>
+            <div className="modal-actions">
+              <button onClick={() => setFeaturePendingDelete(null)}>Cancel</button>
+              <button
+                className="danger-button"
+                onClick={() => {
+                  onDeleteFeature(featurePendingDelete.id);
+                  setFeaturePendingDelete(null);
+                  setSelectedPlanFeature(null);
+                }}
+              >
+                Yes, delete feature
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showAddFeature && (
         <div className="modal">
           <div className="modal-card small">
@@ -5960,6 +6150,44 @@ function App() {
     setFeatures((prev) => prev.map((x) => (x.id === f.id ? f : x)));
     setEditing(null);
   }
+  function deleteFeature(featureId) {
+    setFeatures((prev) => {
+      const next = prev.filter((feature) => feature.id !== featureId);
+      setMilestones((current) => buildWorkspaceMilestones(next, current));
+      return next;
+    });
+    setAllocations((prev) =>
+      prev.flatMap((allocation) => {
+        if (!allocationHasFeature(allocation, featureId)) return [allocation];
+        const remainingIds = allocationFeatureIds(allocation).filter(
+          (id) => id !== featureId,
+        );
+        if (!remainingIds.length) return [];
+        const childOutcomes = { ...(allocation.childOutcomes || {}) };
+        delete childOutcomes[featureId];
+        return [{
+          ...allocation,
+          featureId:
+            allocation.featureId === featureId
+              ? remainingIds[0] || ""
+              : allocation.featureId,
+          featureIds: Array.isArray(allocation.featureIds)
+            ? allocation.featureIds.filter((id) => id !== featureId)
+            : allocation.featureIds,
+          matchedFeatureIds: Array.isArray(allocation.matchedFeatureIds)
+            ? allocation.matchedFeatureIds.filter((id) => id !== featureId)
+            : allocation.matchedFeatureIds,
+          childOutcomes,
+        }];
+      }),
+    );
+    setFinalStageByFeatureId((prev) => {
+      const next = { ...prev };
+      delete next[featureId];
+      return next;
+    });
+    setEditing((current) => (current?.id === featureId ? null : current));
+  }
   return (
     <div className={`app ${theme}`}>
       <div className="toolbar">
@@ -6086,6 +6314,8 @@ function App() {
           finalStageByFeatureId={finalStageByFeatureId}
           setFinalStageByFeatureId={setFinalStageByFeatureId}
           onAddFeature={addFeature}
+          onEditFeature={setEditing}
+          onDeleteFeature={deleteFeature}
         />
       )}{" "}
       {mode === "sprintReview" && (

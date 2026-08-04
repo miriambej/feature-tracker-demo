@@ -2533,6 +2533,41 @@ function DeliveryPlan({
       counted: [],
     };
   });
+  const capacityOverviewRows = ownerOptions.map((owner) => ({
+    owner,
+    sprints: visibleSprintOptions.map((sprintId) => {
+      const key = ownerSprintKey(owner, sprintId);
+      const cap = capacityByOwnerSprint.get(key);
+      const base = cap ? Number(cap.availableDays || 0) : null;
+      const off = daysOffByOwnerSprint.get(key) || 0;
+      const available = base == null ? null : Math.max(0, base - off);
+      const allocated = plannedByOwnerSprint.get(key) || 0;
+      const remaining = available == null ? null : available - allocated;
+      const tone =
+        available == null
+          ? "unset"
+          : allocated > available
+            ? "over"
+            : allocated === available
+              ? "complete"
+              : "pending";
+      return { sprint: sprintId, base, off, available, allocated, remaining, tone };
+    }),
+  }));
+  const capacityOverviewTotals = visibleSprintOptions.map((sprintId) => {
+    const cells = capacityOverviewRows.map((row) =>
+      row.sprints.find((cell) => cell.sprint === sprintId),
+    );
+    const available = cells.reduce(
+      (sum, cell) => sum + Number(cell?.available || 0),
+      0,
+    );
+    const allocated = cells.reduce(
+      (sum, cell) => sum + Number(cell?.allocated || 0),
+      0,
+    );
+    return { sprint: sprintId, available, allocated, remaining: available - allocated };
+  });
   const visibleAllocationRows = useMemo(
     () =>
       allocations.flatMap((a) => {
@@ -3761,29 +3796,28 @@ function DeliveryPlan({
   const selectedRemaining = quickPlan.owner
     ? remainingFor(quickPlan.owner, quickPlan.sprint)
     : null;
-  const capacityGuidance = quickPlan.sprint
-    ? ownerOptions
-        .map((owner) => ({
-          owner,
-          remaining: remainingFor(owner, quickPlan.sprint),
-        }))
-        .filter((r) => r.remaining != null)
-    : [];
-  const capacityChips = capacityGuidance
-    .map((r) => ({
-      ...r,
-      tone:
-        r.remaining < 0
-          ? "over"
-          : r.remaining === 0
-            ? "full"
-            : r.remaining <= 3
-              ? "tight"
-              : "available",
-    }))
-    .sort(
-      (a, b) => b.remaining - a.remaining || a.owner.localeCompare(b.owner),
-    );
+  const quickPlanQuarter = quarterFromSprint(quickPlan.sprint, quarter);
+  const quickPlanQuarterSprints = sprintOptions.filter((sprintId) =>
+    sprintId.startsWith(quickPlanQuarter),
+  );
+  const quarterAvailabilityRows = ownerOptions.map((owner) => ({
+    owner,
+    sprints: quickPlanQuarterSprints.map((sprintId) => {
+      const remaining = remainingFor(owner, sprintId);
+      return {
+        sprint: sprintId,
+        remaining,
+        tone:
+          remaining == null
+            ? "unset"
+            : remaining < 0
+              ? "over"
+              : remaining === 0
+                ? "complete"
+                : "pending",
+      };
+    }),
+  }));
   const selectedCapacityTone =
     selectedRemaining == null
       ? ""
@@ -4430,6 +4464,77 @@ function DeliveryPlan({
       </div>
     </div>
   );
+  const quarterCapacityOverview = (
+    <div className="panel quarter-capacity-panel">
+      <div className="panel-top quarter-capacity-head">
+        <div>
+          <h3>{quarter} Capacity at a glance</h3>
+          <p className="muted">
+            Capacity and allocation for every person, sprint by sprint.
+          </p>
+        </div>
+        <div className="capacity-legend" aria-label="Capacity colour legend">
+          <span className="complete">Fully allocated</span>
+          <span className="pending">Still to allocate</span>
+          <span className="over">Over allocated</span>
+        </div>
+      </div>
+      <div className="quarter-capacity-wrap">
+        <div className="sprint-capacity-grid">
+          {visibleSprintOptions.map((sprintId) => {
+            const total = capacityOverviewTotals.find(
+              (row) => row.sprint === sprintId,
+            );
+            return (
+              <table className="sprint-capacity-card" key={sprintId}>
+                <caption>{sprintId}</caption>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Capacity</th>
+                    <th>Allocation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {capacityOverviewRows.map((row) => {
+                    const cell = row.sprints.find(
+                      (item) => item.sprint === sprintId,
+                    );
+                    return (
+                      <tr key={row.owner}>
+                        <td>{row.owner}</td>
+                        <td title={cell?.off ? `${cell.off} day(s) off` : ""}>
+                          {cell?.available ?? "-"}
+                        </td>
+                        <td className={`allocation-status ${cell?.tone || "unset"}`}>
+                          {cell?.available == null ? "-" : cell.allocated}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="sprint-capacity-total">
+                    <td>Total</td>
+                    <td>{total?.available ?? 0}</td>
+                    <td
+                      className={`allocation-status ${
+                        total?.allocated > total?.available
+                          ? "over"
+                          : total?.allocated === total?.available
+                            ? "complete"
+                            : "pending"
+                      }`}
+                    >
+                      {total?.allocated ?? 0}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
   const allocationEditModal = editingAllocationRow && (
     <div className="modal">
       <div className="modal-card small">
@@ -5039,25 +5144,63 @@ function DeliveryPlan({
                     {quickPlan.sprint}
                   </p>
                 )}
-                {capacityChips.length ? (
-                  <div className="capacity-chip-list">
-                    {capacityChips.map((r) => (
-                      <span
-                        key={r.owner}
-                        className={
-                          "capacity-chip " +
-                          r.tone +
-                          (r.owner === quickPlan.owner ? " selected" : "")
-                        }
-                      >
-                        <b>{r.owner}</b>
-                        <span>{r.remaining}d</span>
-                      </span>
-                    ))}
+                <div className="quarter-availability-head">
+                  <div>
+                    <b>{quickPlanQuarter} availability</b>
+                    <small>Open days by person. Click a cell to select that sprint and owner.</small>
                   </div>
-                ) : (
-                  <small>No person-level capacity for this sprint.</small>
-                )}
+                  <div className="capacity-legend compact">
+                    <span className="pending">Capacity open</span>
+                    <span className="complete">Fully allocated</span>
+                    <span className="over">Over allocated</span>
+                  </div>
+                </div>
+                <div className="quarter-availability-wrap">
+                  <table className="quarter-availability-table">
+                    <thead>
+                      <tr>
+                        <th>Person</th>
+                        {quickPlanQuarterSprints.map((sprintId) => (
+                          <th key={sprintId}>{sprintId}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quarterAvailabilityRows.map((row) => (
+                        <tr key={row.owner}>
+                          <th>{row.owner}</th>
+                          {row.sprints.map((cell) => (
+                            <td key={cell.sprint}>
+                              <button
+                                type="button"
+                                className={`quarter-availability-cell ${cell.tone} ${
+                                  quickPlan.owner === row.owner &&
+                                  quickPlan.sprint === cell.sprint
+                                    ? "selected"
+                                    : ""
+                                }`}
+                                onClick={() =>
+                                  setQuickPlan({
+                                    ...quickPlan,
+                                    owner: row.owner,
+                                    sprint: cell.sprint,
+                                  })
+                                }
+                                title={`${row.owner}: ${
+                                  cell.remaining == null
+                                    ? "capacity not set"
+                                    : `${cell.remaining} open day(s)`
+                                } in ${cell.sprint}`}
+                              >
+                                {cell.remaining == null ? "-" : cell.remaining}
+                              </button>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
                 {selectedRemaining != null &&
                   Number(quickPlan.days || 0) > selectedRemaining && (
                     <p className="capacity-warning">
@@ -5374,6 +5517,7 @@ function DeliveryPlan({
       {importDiagnosticsPanel}
       {kanbanPanel}
       {allocationMatrixEditor}
+      {quarterCapacityOverview}
       {capacityTools}
       {reconcileAllocationModal}
       {planModal}

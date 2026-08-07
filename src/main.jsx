@@ -1349,11 +1349,82 @@ function ExecutiveDashboard({
   selectedWorkspace,
   setSelectedWorkspace,
   onEditFeature,
+  backlogOrder = [],
   eyebrow = "Executive Dashboard",
   heading = "Portfolio milestone roadmap",
   showQuarterPipeline = true,
   showMigrationStatus = false,
 }) {
+  async function printExecutiveReport() {
+    const source = document.querySelector(".executive-pipeline-panel");
+    if (!source) return;
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
+    const stage = document.createElement("div");
+    stage.className = "pdf-export-stage";
+    stage.appendChild(source.cloneNode(true));
+    document.body.appendChild(stage);
+    try {
+      await document.fonts?.ready;
+      const canvas = await html2canvas(stage.firstElementChild, {
+        backgroundColor: "#ffffff",
+        scale: 4,
+        useCORS: true,
+        logging: false,
+      });
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const margin = 8;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imageWidth = pageWidth - margin * 2;
+      const printableHeight = pageHeight - margin * 2;
+      const pageSlicePixels = Math.floor(
+        (canvas.width * printableHeight) / imageWidth,
+      );
+      let pixelOffset = 0;
+      let page = 0;
+      while (pixelOffset < canvas.height) {
+        const sliceHeight = Math.min(
+          pageSlicePixels,
+          canvas.height - pixelOffset,
+        );
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+        const pageContext = pageCanvas.getContext("2d");
+        pageContext.imageSmoothingEnabled = true;
+        pageContext.imageSmoothingQuality = "high";
+        pageContext.drawImage(
+            canvas,
+            0,
+            pixelOffset,
+            canvas.width,
+            sliceHeight,
+            0,
+            0,
+            canvas.width,
+            sliceHeight,
+          );
+        const sliceImageHeight = (sliceHeight * imageWidth) / canvas.width;
+        if (page > 0) pdf.addPage("a4", "landscape");
+        pdf.addImage(
+          pageCanvas.toDataURL("image/png"),
+          "PNG",
+          margin,
+          margin,
+          imageWidth,
+          sliceImageHeight,
+        );
+        pixelOffset += sliceHeight;
+        page += 1;
+      }
+      pdf.save("six-month-delivery-roadmap.pdf");
+    } finally {
+      stage.remove();
+    }
+  }
   const filtered =
     workspaceFilter === "ALL"
       ? features
@@ -1551,6 +1622,73 @@ function ExecutiveDashboard({
       };
     })
     .filter(Boolean);
+  const claimedAllocationIds = new Set(
+    pipelineFeaturePlans.flatMap((item) =>
+      executiveAllocationsForFeature(item.feature).map((allocation) => allocation.id),
+    ),
+  );
+  const allocationOnlyPlans = Array.from(
+    allocations
+      .filter(
+        (allocation) =>
+          normaliseSprintName(allocation.sprint) &&
+          !claimedAllocationIds.has(allocation.id),
+      )
+      .reduce((groups, allocation) => {
+        const featureName =
+          allocation.actualFeatureName ||
+          allocation.featureName ||
+          allocation.planningGroup ||
+          allocation.workspaceName ||
+          "Unmapped planning work";
+        const workspace = normaliseWorkspaceName(
+          allocation.workspace ||
+            allocation.workspaceName ||
+            allocation.planningGroup ||
+            featureName,
+        );
+        const key = `${matchKey(workspace)}||${matchKey(featureName)}`;
+        if (!groups.has(key))
+          groups.set(key, { key, featureName, workspace, rows: [] });
+        groups.get(key).rows.push(allocation);
+        return groups;
+      }, new Map())
+      .values(),
+  ).map((group) => {
+    const rows = group.rows.sort((a, b) =>
+      normaliseSprintName(a.sprint).localeCompare(normaliseSprintName(b.sprint)),
+    );
+    const completedUat = rows
+      .filter(
+        (row) =>
+          row.stage === "UAT" &&
+          row.isStageComplete,
+      )
+      .at(-1);
+    const firstSprint = normaliseSprintName(rows[0]?.sprint);
+    const latestSprint = normaliseSprintName(rows.at(-1)?.sprint);
+    const completionSprint = normaliseSprintName(completedUat?.sprint);
+    const startValue = executiveSprintDateById.get(firstSprint)?.startDate || "";
+    const endValue = completionSprint
+      ? executiveSprintDateById.get(completionSprint)?.endDate || ""
+      : "";
+    return {
+      feature: {
+        id: `planning:${group.key}`,
+        feature_name: group.featureName,
+        workspace: group.workspace,
+        status: "initial",
+      },
+      quarter: quarterFromSprint(latestSprint, ""),
+      startValue,
+      startDate: parseDate(startValue),
+      completionSprint,
+      endValue,
+      endDate: parseDate(endValue),
+      isEndFinalised: !!completedUat,
+    };
+  });
+  const roadmapFeaturePlans = [...pipelineFeaturePlans, ...allocationOnlyPlans];
   const quarterPipeline = ["26Q1", "26Q2"].map((quarterId) => {
     const byWorkspace = new Map();
     pipelineFeaturePlans
@@ -1581,7 +1719,7 @@ function ExecutiveDashboard({
   const deliveryWindowEnd = new Date(2026, 11, 31);
   const deliveryWindowMs = deliveryWindowEnd - deliveryWindowStart;
   const sixMonthWorkspacePlans = Array.from(
-    pipelineFeaturePlans.reduce((groups, item) => {
+    roadmapFeaturePlans.reduce((groups, item) => {
       const workspace = item.feature.workspace || "Unknown";
       if (!groups.has(workspace))
         groups.set(workspace, {
@@ -1606,9 +1744,12 @@ function ExecutiveDashboard({
       const plannedFeatureIds = new Set(
         group.features.map((item) => item.feature.id),
       );
-      const workspaceFeatures = filtered.filter(
+      const catalogWorkspaceFeatures = filtered.filter(
         (feature) => (feature.workspace || "Unknown") === group.workspace,
       );
+      const workspaceFeatures = catalogWorkspaceFeatures.length
+        ? catalogWorkspaceFeatures
+        : group.features.map((item) => item.feature);
       const continuing =
         group.continuing ||
         workspaceFeatures.some(
@@ -1637,6 +1778,41 @@ function ExecutiveDashboard({
       if (b.endDate) return 1;
       return a.workspace.localeCompare(b.workspace);
     });
+  const backlogRankById = new Map(
+    backlogOrder.map((featureId, index) => [featureId, index]),
+  );
+  const executiveBacklog = Array.from(
+    filtered
+      .filter(
+        (feature) =>
+          feature.status !== "uat_done" &&
+          !executiveAllocationsForFeature(feature).some((allocation) =>
+            normaliseSprintName(allocation.sprint),
+          ),
+      )
+      .sort(
+        (a, b) =>
+          (backlogRankById.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+            (backlogRankById.get(b.id) ?? Number.MAX_SAFE_INTEGER) ||
+          a.feature_name.localeCompare(b.feature_name),
+      )
+      .reduce((groups, feature) => {
+        const workspace = feature.workspace || "Unknown";
+        if (!groups.has(workspace))
+          groups.set(workspace, { workspace, features: [], rank: Number.MAX_SAFE_INTEGER });
+        const group = groups.get(workspace);
+        group.features.push(feature);
+        group.rank = Math.min(
+          group.rank,
+          backlogRankById.get(feature.id) ?? Number.MAX_SAFE_INTEGER,
+        );
+        return groups;
+      }, new Map())
+      .values(),
+  ).sort(
+    (a, b) =>
+      a.rank - b.rank || a.workspace.localeCompare(b.workspace),
+  );
   const migrationDone = filtered.filter((feature) => feature.status === "uat_done").length;
   const migrationPercent = filtered.length
     ? Math.round(
@@ -1653,17 +1829,24 @@ function ExecutiveDashboard({
           <div className="eyebrow">{eyebrow}</div>
           <h1>{heading}</h1>
         </div>
-        <select
-          value={workspaceFilter}
-          onChange={(e) => {
-            setWorkspaceFilter(e.target.value);
-            setSelectedWorkspace(null);
-          }}
-        >
-          {workspaces.map((w) => (
-            <option key={w}>{w}</option>
-          ))}
-        </select>
+        <div className="executive-head-actions">
+          {showQuarterPipeline && (
+            <button className="save-pdf-button" onClick={printExecutiveReport}>
+              Download PDF
+            </button>
+          )}
+          <select
+            value={workspaceFilter}
+            onChange={(e) => {
+              setWorkspaceFilter(e.target.value);
+              setSelectedWorkspace(null);
+            }}
+          >
+            {workspaces.map((w) => (
+              <option key={w}>{w}</option>
+            ))}
+          </select>
+        </div>
       </div>
       {showMigrationStatus && (
         <div className="panel migration-status-panel">
@@ -1728,6 +1911,10 @@ function ExecutiveDashboard({
       </div>
       {showQuarterPipeline && (
         <div className="panel executive-pipeline-panel">
+          <div className="print-report-meta">
+            <b>Six-month delivery roadmap</b>
+            <span>Prepared {fmtDate(TODAY)} · July–December 2026</span>
+          </div>
           <div className="panel-top">
             <div>
               <h3>Six-month delivery roadmap</h3>
@@ -1745,18 +1932,42 @@ function ExecutiveDashboard({
               <div className="delivery-roadmap-row" key={row.workspace}>
                 <div className="delivery-roadmap-name"><b>{row.workspace}</b><small>{row.features.length} feature{row.features.length === 1 ? "" : "s"}</small></div>
                 <div className="delivery-roadmap-track">
-                  <i className={row.continuing ? "continuing" : ""} style={{ left: `${row.left}%`, width: `${row.width}%` }}><span>{row.continuing ? "Continuing" : fmtDate(row.endDate)}</span></i>
+                  <i
+                    className={`${row.continuing ? "continuing" : ""} ${row.width < 22 ? "short-bar" : ""} ${row.left + row.width > 82 ? "label-before" : ""}`}
+                    style={{ left: `${row.left}%`, width: `${row.width}%` }}
+                  ><span>{row.continuing ? "Continuing" : fmtDate(row.endDate)}</span></i>
                 </div>
               </div>
             ))}
           </div>
-          <div className="delivery-schedule-table-wrap">
-            <table className="compact-table delivery-schedule-table">
-              <thead><tr><th>Workspace</th><th>Features</th><th>Planned start</th><th>Planned completion</th></tr></thead>
-              <tbody>{sixMonthWorkspacePlans.map((row) => (
-                <tr key={row.workspace}><td><b>{row.workspace}</b></td><td>{row.features.length}</td><td>{fmtDate(row.startDate)}</td><td>{row.continuing ? <span className="pill-status neutral">Continuing</span> : fmtDate(row.endDate)}</td></tr>
-              ))}</tbody>
-            </table>
+          <div className="delivery-tables-grid">
+            <div className="delivery-schedule-table-wrap">
+              <table className="compact-table delivery-schedule-table">
+                <thead><tr><th>Workspace</th><th>Features</th><th>Planned start</th><th>Planned completion</th></tr></thead>
+                <tbody>{sixMonthWorkspacePlans.map((row) => (
+                  <tr key={row.workspace}><td><b>{row.workspace}</b></td><td>{row.features.length}</td><td>{fmtDate(row.startDate)}</td><td>{row.continuing ? <span className="pill-status neutral">Continuing</span> : fmtDate(row.endDate)}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <div className="executive-backlog-wrap">
+              <div className="executive-backlog-head">
+                <div><b>Prioritised backlog</b><small>Unplanned workspaces from Delivery Plan</small></div>
+                <span>{executiveBacklog.length}</span>
+              </div>
+              <table className="compact-table executive-backlog-table">
+                <thead><tr><th>Priority</th><th>Workspace</th><th>To plan</th></tr></thead>
+                <tbody>
+                  {executiveBacklog.map((row, index) => (
+                    <tr key={row.workspace}>
+                      <td><span className="backlog-rank">{index + 1}</span></td>
+                      <td><b>{row.workspace}</b><small>{row.features[0]?.feature_name}</small></td>
+                      <td>{row.features.length}</td>
+                    </tr>
+                  ))}
+                  {!executiveBacklog.length && <tr><td colSpan="3">Everything is planned.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
           <div className="quarter-pipeline-grid">
             {quarterPipeline.map((group) => (
@@ -2363,6 +2574,8 @@ function DeliveryPlan({
   onAddFeature,
   onEditFeature,
   onDeleteFeature,
+  backlogOrder,
+  setBacklogOrder,
 }) {
   const sprintOptions = useMemo(() => {
     const fromData = Array.from(
@@ -4110,6 +4323,9 @@ function DeliveryPlan({
         splitOwners(f.owner).includes(ownerFilter) ||
         entityAllocations(f).some((a) => a.owner === ownerFilter)),
   );
+  const planningBacklogRank = new Map(
+    (backlogOrder || []).map((featureId, index) => [featureId, index]),
+  );
   const kanbanItems = kanbanBase
     .map((feature) => {
       const finalStage = featureFinalStage(feature);
@@ -4126,11 +4342,62 @@ function DeliveryPlan({
       };
     })
     .sort(
-      (a, b) =>
-        priorityRank(a.feature.user_count) -
+      (a, b) => {
+        if (a.latestStage !== b.latestStage)
+          return (
+            [...PLAN_STAGES, "Planning Complete"].indexOf(a.latestStage) -
+            [...PLAN_STAGES, "Planning Complete"].indexOf(b.latestStage)
+          );
+        if (a.latestStage === "Requirement" && b.latestStage === "Requirement")
+          return (
+            (planningBacklogRank.get(a.feature.id) ?? Number.MAX_SAFE_INTEGER) -
+              (planningBacklogRank.get(b.feature.id) ?? Number.MAX_SAFE_INTEGER) ||
+            priorityRank(a.feature.user_count) -
+              priorityRank(b.feature.user_count) ||
+            Number(b.feature.user_count || 0) - Number(a.feature.user_count || 0)
+          );
+        return (
+          priorityRank(a.feature.user_count) -
           priorityRank(b.feature.user_count) ||
-        Number(b.feature.user_count || 0) - Number(a.feature.user_count || 0),
+          Number(b.feature.user_count || 0) - Number(a.feature.user_count || 0)
+        );
+      },
     );
+  const requirementFeatureIds = kanbanItems
+    .filter((item) => item.latestStage === "Requirement")
+    .map((item) => item.feature.id);
+  useEffect(() => {
+    if (!requirementFeatureIds.length) return;
+    setBacklogOrder((current) => {
+      const next = Array.from(
+        new Set([...(current || []), ...requirementFeatureIds]),
+      );
+      return next.length === (current || []).length ? current : next;
+    });
+  }, [requirementFeatureIds.join("|"), setBacklogOrder]);
+  function moveBacklogFeature(featureId, direction) {
+    const visibleOrder = [...requirementFeatureIds];
+    const index = visibleOrder.indexOf(featureId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= visibleOrder.length) return;
+    [visibleOrder[index], visibleOrder[target]] = [
+      visibleOrder[target],
+      visibleOrder[index],
+    ];
+    setBacklogOrder((current) => {
+      const visibleIds = new Set(requirementFeatureIds);
+      let replacementIndex = 0;
+      const next = (current || []).map((savedId) =>
+        visibleIds.has(savedId)
+          ? visibleOrder[replacementIndex++]
+          : savedId,
+      );
+      visibleOrder.slice(replacementIndex).forEach((visibleId) =>
+        next.push(visibleId),
+      );
+      return Array.from(new Set(next));
+    });
+  }
   const kanbanLabels = {
     Requirement: "Requirement Planning",
     Build: "Build Planning",
@@ -4620,6 +4887,7 @@ function DeliveryPlan({
                     feature,
                     finalStage,
                     latest,
+                    latestStage,
                     milestones,
                     people,
                   }) => (
@@ -4630,14 +4898,40 @@ function DeliveryPlan({
                     >
                       <div className="card-top">
                         <div className="card-title">{feature.feature_name}</div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openPlanFeature(feature);
-                          }}
-                        >
-                          Edit
-                        </button>
+                        <div className="planning-card-actions">
+                          {latestStage === "Requirement" && (
+                            <>
+                              <button
+                                title="Move higher in backlog"
+                                disabled={requirementFeatureIds[0] === feature.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveBacklogFeature(feature.id, -1);
+                                }}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                title="Move lower in backlog"
+                                disabled={requirementFeatureIds.at(-1) === feature.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  moveBacklogFeature(feature.id, 1);
+                                }}
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPlanFeature(feature);
+                            }}
+                          >
+                            Edit
+                          </button>
+                        </div>
                       </div>
                       <div className="card-workspace">{feature.workspace}</div>
                       <div className="card-meta">
@@ -4645,6 +4939,11 @@ function DeliveryPlan({
                           Current:{" "}
                           {STATUS_LABEL[feature.status] || "Standalone"}
                         </span>
+                        {latestStage === "Requirement" && (
+                          <span>
+                            Backlog #{requirementFeatureIds.indexOf(feature.id) + 1}
+                          </span>
+                        )}
                         <span>
                           {Number(feature.user_count || 0).toLocaleString()}{" "}
                           users / {priority(feature.user_count)}
@@ -6298,6 +6597,7 @@ function App() {
   const [sprintDates, setSprintDates] = useState([]);
   const [prodSupportStories, setProdSupportStories] = useState([]);
   const [finalStageByFeatureId, setFinalStageByFeatureId] = useState({});
+  const [backlogOrder, setBacklogOrder] = useState([]);
   const [customSprints, setCustomSprints] = useState([]);
   const [mode, setMode] = useState("executive");
   const [theme, setTheme] = useState(
@@ -6325,6 +6625,7 @@ function App() {
         setSprintDates(saved.sprintDates || []);
         setProdSupportStories(saved.prodSupportStories || []);
         setFinalStageByFeatureId(saved.finalStageByFeatureId || {});
+        setBacklogOrder(saved.backlogOrder || []);
         setCustomSprints(saved.customSprints || []);
       }
     } catch {
@@ -6347,6 +6648,7 @@ function App() {
             sprintDates,
             prodSupportStories,
             finalStageByFeatureId,
+            backlogOrder,
             customSprints,
           }),
         ),
@@ -6362,6 +6664,7 @@ function App() {
     sprintDates,
     prodSupportStories,
     finalStageByFeatureId,
+    backlogOrder,
     customSprints,
     loaded,
   ]);
@@ -6602,6 +6905,7 @@ function App() {
           selectedWorkspace={selectedWorkspace}
           setSelectedWorkspace={setSelectedWorkspace}
           onEditFeature={setEditing}
+          backlogOrder={backlogOrder}
         />
       )}{" "}
       {mode === "overview" && (
@@ -6672,6 +6976,8 @@ function App() {
           onAddFeature={addFeature}
           onEditFeature={setEditing}
           onDeleteFeature={deleteFeature}
+          backlogOrder={backlogOrder}
+          setBacklogOrder={setBacklogOrder}
         />
       )}{" "}
       {mode === "sprintReview" && (

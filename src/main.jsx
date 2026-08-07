@@ -1,11 +1,26 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { MIGRATION_FEATURE_NAMES } from "./migrationCatalog.js";
 import "./styles.css";
 
 const STORAGE_KEY = "feature-tracker-v2-full";
-const TODAY = new Date(2026, 6, 7); // 7 Jul 2026
-const CURRENT_SPRINT_END = new Date(2026, 6, 14);
-const NEXT_SPRINT_END = new Date(2026, 6, 28);
+const TODAY = new Date();
+TODAY.setHours(0, 0, 0, 0);
+const QUARTER_SPRINT_BASE = new Date(2026, 6, 1);
+const sprintIndexToday = Math.max(
+  0,
+  Math.floor((TODAY.getTime() - QUARTER_SPRINT_BASE.getTime()) / 86400000 / 14),
+);
+const CURRENT_SPRINT_END = new Date(
+  2026,
+  6,
+  14 + sprintIndexToday * 14,
+);
+const NEXT_SPRINT_END = new Date(
+  2026,
+  6,
+  28 + sprintIndexToday * 14,
+);
 
 const STATUSES = [
   ["initial", "Initial"],
@@ -387,6 +402,12 @@ function normalisePersonName(v) {
   };
   return aliases[key] || name;
 }
+const MIGRATION_FEATURE_KEYS = new Set(MIGRATION_FEATURE_NAMES.map(matchKey));
+function isMigrationFeature(feature) {
+  if (typeof feature?.migrationOverride === "boolean")
+    return feature.migrationOverride;
+  return MIGRATION_FEATURE_KEYS.has(matchKey(feature?.feature_name));
+}
 function normaliseWorkspaceName(v) {
   const name = String(v || "")
     .trim()
@@ -611,6 +632,12 @@ function fmtDate(v) {
         year: "numeric",
       })
     : "-";
+}
+function fmtSprintDate(v) {
+  const d = parseDate(v);
+  return d
+    ? d.toLocaleDateString(undefined, { day: "numeric", month: "short" })
+    : "";
 }
 function monthStart(d) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -1322,6 +1349,10 @@ function ExecutiveDashboard({
   selectedWorkspace,
   setSelectedWorkspace,
   onEditFeature,
+  eyebrow = "Executive Dashboard",
+  heading = "Portfolio milestone roadmap",
+  showQuarterPipeline = true,
+  showMigrationStatus = false,
 }) {
   const filtered =
     workspaceFilter === "ALL"
@@ -1465,12 +1496,162 @@ function ExecutiveDashboard({
       );
     });
   const [editWs, setEditWs] = useState(null);
+  const pipelineFeaturePlans = filtered
+    .map((feature) => {
+      const rows = executiveAllocationsForFeature(feature)
+        .filter((allocation) => normaliseSprintName(allocation.sprint))
+        .sort((a, b) =>
+          normaliseSprintName(a.sprint).localeCompare(normaliseSprintName(b.sprint)),
+        );
+      if (!rows.length) return null;
+      const finalStage = finalStageByFeatureId?.[feature.id]
+        ? normaliseFinalStage(finalStageByFeatureId[feature.id])
+        : defaultFinalStageForFeature(feature);
+      const completion = rows
+        .filter(
+          (row) =>
+            PLAN_STAGES.indexOf(row.stage) >= finalStageIndex(finalStage),
+        )
+        .at(-1);
+      const fallbackFinish = parseDate(
+        feature["UAT Internal"] ||
+          milestones[feature.workspace]?.["UAT Internal"] ||
+          "",
+      );
+      const completionSprint = normaliseSprintName(completion?.sprint);
+      let quarterId = completionSprint.match(/^(\d{2}Q\d)/)?.[1] || "";
+      if (!quarterId && fallbackFinish) {
+        const time = fallbackFinish.getTime();
+        if (time >= new Date(2026, 6, 1).getTime() && time < new Date(2026, 9, 7).getTime())
+          quarterId = "26Q1";
+        else if (time >= new Date(2026, 9, 7).getTime() && time <= new Date(2026, 11, 31).getTime())
+          quarterId = "26Q2";
+      }
+      const latestSprint = normaliseSprintName(rows.at(-1)?.sprint);
+      const firstSprint = normaliseSprintName(rows[0]?.sprint);
+      if (!quarterId) quarterId = latestSprint.match(/^(\d{2}Q\d)/)?.[1] || "";
+      if (!quarterId) return null;
+      const endValue = completionSprint
+        ? executiveSprintDateById.get(completionSprint)?.endDate || ""
+        : fallbackFinish
+          ? toDateInputValue(fallbackFinish)
+          : "";
+      const startValue = firstSprint
+        ? executiveSprintDateById.get(firstSprint)?.startDate || ""
+        : "";
+      return {
+        feature,
+        quarter: quarterId,
+        startValue,
+        startDate: parseDate(startValue),
+        completionSprint,
+        endValue,
+        endDate: parseDate(endValue),
+        isEndFinalised: !!(completion || fallbackFinish),
+      };
+    })
+    .filter(Boolean);
+  const quarterPipeline = ["26Q1", "26Q2"].map((quarterId) => {
+    const byWorkspace = new Map();
+    pipelineFeaturePlans
+      .filter((row) => row.quarter === quarterId)
+      .forEach((row) => {
+        if (!byWorkspace.has(row.feature.workspace))
+          byWorkspace.set(row.feature.workspace, {
+            workspace: row.feature.workspace,
+            features: [],
+            endDate: null,
+            endValue: "",
+          });
+        const group = byWorkspace.get(row.feature.workspace);
+        group.features.push(row);
+        if (row.endDate && (!group.endDate || row.endDate > group.endDate)) {
+          group.endDate = row.endDate;
+          group.endValue = row.endValue;
+        }
+      });
+    return {
+      quarter: quarterId,
+      rows: Array.from(byWorkspace.values()).sort((a, b) =>
+        a.workspace.localeCompare(b.workspace),
+      ),
+    };
+  });
+  const deliveryWindowStart = new Date(2026, 6, 1);
+  const deliveryWindowEnd = new Date(2026, 11, 31);
+  const deliveryWindowMs = deliveryWindowEnd - deliveryWindowStart;
+  const sixMonthWorkspacePlans = Array.from(
+    pipelineFeaturePlans.reduce((groups, item) => {
+      const workspace = item.feature.workspace || "Unknown";
+      if (!groups.has(workspace))
+        groups.set(workspace, {
+          workspace,
+          features: [],
+          startDate: null,
+          endDate: null,
+          continuing: false,
+        });
+      const group = groups.get(workspace);
+      group.features.push(item);
+      const itemStart = item.startDate || deliveryWindowStart;
+      if (!group.startDate || itemStart < group.startDate)
+        group.startDate = itemStart;
+      if (item.endDate && (!group.endDate || item.endDate > group.endDate))
+        group.endDate = item.endDate;
+      if (!item.isEndFinalised) group.continuing = true;
+      return groups;
+    }, new Map()).values(),
+  )
+    .map((group) => {
+      const plannedFeatureIds = new Set(
+        group.features.map((item) => item.feature.id),
+      );
+      const workspaceFeatures = filtered.filter(
+        (feature) => (feature.workspace || "Unknown") === group.workspace,
+      );
+      const continuing =
+        group.continuing ||
+        workspaceFeatures.some(
+          (feature) =>
+            feature.status !== "uat_done" &&
+            !plannedFeatureIds.has(feature.id),
+        );
+      const start = group.startDate || deliveryWindowStart;
+      const visualEnd = continuing
+        ? deliveryWindowEnd
+        : group.endDate || deliveryWindowEnd;
+      const left = Math.max(0, Math.min(100, ((start - deliveryWindowStart) / deliveryWindowMs) * 100));
+      const right = Math.max(left + 1, Math.min(100, ((visualEnd - deliveryWindowStart) / deliveryWindowMs) * 100));
+      return {
+        ...group,
+        features: workspaceFeatures,
+        continuing,
+        left,
+        width: right - left,
+      };
+    })
+    .sort((a, b) => {
+      if (a.continuing !== b.continuing) return a.continuing ? 1 : -1;
+      if (a.endDate && b.endDate) return a.endDate - b.endDate;
+      if (a.endDate) return -1;
+      if (b.endDate) return 1;
+      return a.workspace.localeCompare(b.workspace);
+    });
+  const migrationDone = filtered.filter((feature) => feature.status === "uat_done").length;
+  const migrationPercent = filtered.length
+    ? Math.round(
+        filtered.reduce(
+          (total, feature) => total + (STATUS_WEIGHT[feature.status] || 0),
+          0,
+        ) / filtered.length,
+      )
+    : 0;
   return (
     <div className="dashboard">
       <div className="dash-head">
         <div>
-          <div className="eyebrow">Executive Dashboard</div>
-          <h1>Workspace milestone roadmap</h1>
+          <div className="eyebrow">{eyebrow}</div>
+          <h1>{heading}</h1>
         </div>
         <select
           value={workspaceFilter}
@@ -1484,6 +1665,31 @@ function ExecutiveDashboard({
           ))}
         </select>
       </div>
+      {showMigrationStatus && (
+        <div className="panel migration-status-panel">
+          <div className="panel-top">
+            <div>
+              <h3>Migration project status</h3>
+              <p className="muted">
+                Weighted progress through Build, SIT, BA sign-off and UAT.
+              </p>
+            </div>
+            <div className="migration-percent">{migrationPercent}% complete</div>
+          </div>
+          <div className="migration-progress-track">
+            <i style={{ width: `${migrationPercent}%` }} />
+          </div>
+          <div className="migration-stage-grid">
+            <SummaryCard label="Not started" value={filtered.filter((f) => f.status === "initial").length} hint="Initial" />
+            <SummaryCard label="Build" value={filtered.filter((f) => /^build_/.test(f.status)).length} hint="In progress or done" />
+            <SummaryCard label="SIT" value={filtered.filter((f) => /^sit_/.test(f.status)).length} hint="In progress or done" />
+            <SummaryCard label="Deploy" value={filtered.filter((f) => /^deployment_/.test(f.status)).length} hint="In progress or done" />
+            <SummaryCard label="BA Sign-off" value={filtered.filter((f) => /^bs_signoff_/.test(f.status)).length} hint="In progress or done" />
+            <SummaryCard label="UAT" value={filtered.filter((f) => f.status === "uat_in_progress").length} hint="In progress" />
+            <SummaryCard label="Completed" value={migrationDone} hint={`${filtered.length} migration features`} />
+          </div>
+        </div>
+      )}
       <div className="summary-grid">
         <SummaryCard
           label="Workspaces"
@@ -1520,6 +1726,87 @@ function ExecutiveDashboard({
           hint="Critical blockers"
         />
       </div>
+      {showQuarterPipeline && (
+        <div className="panel executive-pipeline-panel">
+          <div className="panel-top">
+            <div>
+              <h3>Six-month delivery roadmap</h3>
+              <p className="muted">
+                Workspace-level plan from July to December, ordered by planned completion.
+              </p>
+            </div>
+            <span className="pill-status neutral">{sixMonthWorkspacePlans.length} workspaces</span>
+          </div>
+          <div className="delivery-roadmap-axis">
+            <span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+          </div>
+          <div className="delivery-roadmap-chart">
+            {sixMonthWorkspacePlans.map((row) => (
+              <div className="delivery-roadmap-row" key={row.workspace}>
+                <div className="delivery-roadmap-name"><b>{row.workspace}</b><small>{row.features.length} feature{row.features.length === 1 ? "" : "s"}</small></div>
+                <div className="delivery-roadmap-track">
+                  <i className={row.continuing ? "continuing" : ""} style={{ left: `${row.left}%`, width: `${row.width}%` }}><span>{row.continuing ? "Continuing" : fmtDate(row.endDate)}</span></i>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="delivery-schedule-table-wrap">
+            <table className="compact-table delivery-schedule-table">
+              <thead><tr><th>Workspace</th><th>Features</th><th>Planned start</th><th>Planned completion</th></tr></thead>
+              <tbody>{sixMonthWorkspacePlans.map((row) => (
+                <tr key={row.workspace}><td><b>{row.workspace}</b></td><td>{row.features.length}</td><td>{fmtDate(row.startDate)}</td><td>{row.continuing ? <span className="pill-status neutral">Continuing</span> : fmtDate(row.endDate)}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <div className="quarter-pipeline-grid">
+            {quarterPipeline.map((group) => (
+              <div className="quarter-pipeline-card" key={group.quarter}>
+                <div className="quarter-pipeline-title">
+                  <div>
+                    <span>{group.quarter}</span>
+                    <b>{group.rows.reduce((sum, row) => sum + row.features.length, 0)} features</b>
+                  </div>
+                  <strong>
+                    {group.rows.length} workspaces
+                  </strong>
+                </div>
+                <div className="quarter-pipeline-list">
+                  {group.rows.length ? (
+                    group.rows.map((row) => {
+                      const finalised = row.features.filter((item) => item.isEndFinalised);
+                      const unfinalised = row.features.length - finalised.length;
+                      return (
+                        <details className="quarter-pipeline-row" key={row.workspace}>
+                          <summary>
+                            <span>
+                              <b>{row.workspace}</b>
+                              <small>{row.features.length} features</small>
+                            </span>
+                            <span>
+                              <b>{row.endDate ? `Complete by ${fmtDate(row.endValue)}` : "End date not finalised"}</b>
+                              <small>{finalised.length} completing · {unfinalised} not finalised</small>
+                            </span>
+                          </summary>
+                          <div className="quarter-pipeline-feature-list">
+                            {row.features.map((item) => (
+                              <button key={item.feature.id} onClick={() => onEditFeature(item.feature)}>
+                                <span>{item.feature.feature_name}</span>
+                                <small>{item.isEndFinalised ? item.completionSprint || fmtDate(item.endValue) : "Started · end not finalised"}</small>
+                              </button>
+                            ))}
+                          </div>
+                        </details>
+                      );
+                    })
+                  ) : (
+                    <div className="empty">No features planned yet.</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="panel roadmap-panel">
         <h3>Milestone roadmap</h3>
         <div
@@ -1836,6 +2123,17 @@ function FeatureModal({ feature, workspaces, owners, onClose, onSave }) {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="migration-toggle">
+            <input
+              type="checkbox"
+              checked={isMigrationFeature(form)}
+              onChange={(e) =>
+                setForm({ ...form, migrationOverride: e.target.checked })
+              }
+            />
+            Migration work
+            <small>Include this feature in the Migration Dashboard.</small>
           </label>
           <label className="full">
             Notes
@@ -4394,7 +4692,7 @@ function DeliveryPlan({
       </div>
     </div>
   );
-  const allocationMatrixEditor = (
+  const renderAllocationMatrixEditor = () => (
     <div className="panel allocation-matrix-panel">
       <div className="panel-top">
         <div>
@@ -4449,14 +4747,34 @@ function DeliveryPlan({
           </span>
         </div>
       </div>
-      <div className="allocation-matrix-wrap">
-        <table className="allocation-matrix">
+      <div
+        className="allocation-matrix-wrap"
+      >
+        <div className="allocation-feature-scroll">
+          <table className="allocation-matrix">
+          <colgroup>
+            <col className="allocation-feature-column" />
+            {matrixSprints.map((s) => (
+              <col className="allocation-sprint-column" key={s} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               <th>Feature / Group</th>
-              {matrixSprints.map((s) => (
-                <th key={s}>{s}</th>
-              ))}
+              {matrixSprints.map((s) => {
+                const dates = effectiveSprintDates.find(
+                  (row) => row.sprint === normaliseSprintName(s),
+                );
+                const dateRange = dates?.startDate
+                  ? `${fmtSprintDate(dates.startDate)} – ${fmtSprintDate(dates.endDate || dates.startDate)}`
+                  : "Dates not set";
+                return (
+                  <th className="allocation-sprint-heading" key={s}>
+                    <span>{s}</span>
+                    <small>{dateRange}</small>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -4518,53 +4836,53 @@ function DeliveryPlan({
               </tr>
             ))}
           </tbody>
-        </table>
-        {!allocationMatrixRows.length && (
-          <p className="muted">No allocations match the current filters.</p>
-        )}
+          </table>
+          {!allocationMatrixRows.length && (
+            <p className="muted">No allocations match the current filters.</p>
+          )}
+        </div>
+        {quarterCapacityOverview}
       </div>
     </div>
   );
   const quarterCapacityOverview = (
-    <div className="panel quarter-capacity-panel">
-      <div className="panel-top quarter-capacity-head">
-        <div>
-          <h3>{quarter} Capacity at a glance</h3>
-          <p className="muted">
-            Capacity and allocation for every person, sprint by sprint.
-          </p>
+    <div className="quarter-capacity-panel quarter-capacity-inline">
+      <div
+        className="sprint-capacity-grid"
+        style={{
+          gridTemplateColumns: `14% repeat(${matrixSprints.length}, minmax(0, 1fr))`,
+        }}
+      >
+        <div className="capacity-grid-spacer">
+          <div className="capacity-legend" aria-label="Capacity colour legend">
+            <span className="complete">Fully allocated</span>
+            <span className="pending">Still to allocate</span>
+            <span className="over">Over allocated</span>
+          </div>
         </div>
-        <div className="capacity-legend" aria-label="Capacity colour legend">
-          <span className="complete">Fully allocated</span>
-          <span className="pending">Still to allocate</span>
-          <span className="over">Over allocated</span>
-        </div>
-      </div>
-      <div className="quarter-capacity-wrap">
-        <div className="sprint-capacity-grid">
-          {visibleSprintOptions.map((sprintId) => {
+          {matrixSprints.map((sprintId) => {
             const total = capacityOverviewTotals.find(
               (row) => row.sprint === sprintId,
             );
             return (
-              <table className="sprint-capacity-card" key={sprintId}>
-                <caption>{sprintId}</caption>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Capacity</th>
-                    <th>Allocation</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <div
+                className="sprint-capacity-card"
+                key={sprintId}
+                aria-label={`${sprintId} team capacity and allocation`}
+              >
+                <div className="sprint-capacity-row sprint-capacity-header">
+                  <span>Name</span>
+                  <span>Capacity</span>
+                  <span>Allocation</span>
+                </div>
                   {capacityOverviewRows.map((row) => {
                     const cell = row.sprints.find(
                       (item) => item.sprint === sprintId,
                     );
                     return (
-                      <tr key={row.owner}>
-                        <td>{row.owner}</td>
-                        <td
+                      <div className="sprint-capacity-row" key={row.owner}>
+                        <span>{row.owner}</span>
+                        <span
                           className={cell?.offDetails ? "capacity-hover-target" : ""}
                           tabIndex={cell?.offDetails ? 0 : undefined}
                           aria-label={
@@ -4592,17 +4910,17 @@ function DeliveryPlan({
                           onBlur={() => setCapacityTooltip(null)}
                         >
                           {cell?.available ?? "-"}
-                        </td>
-                        <td className={`allocation-status ${cell?.tone || "unset"}`}>
+                        </span>
+                        <span className={`allocation-status ${cell?.tone || "unset"}`}>
                           {cell?.available == null ? "-" : cell.allocated}
-                        </td>
-                      </tr>
+                        </span>
+                      </div>
                     );
                   })}
-                  <tr className="sprint-capacity-total">
-                    <td>Total</td>
-                    <td>{total?.available ?? 0}</td>
-                    <td
+                  <div className="sprint-capacity-row sprint-capacity-total">
+                    <span>Total</span>
+                    <span>{total?.available ?? 0}</span>
+                    <span
                       className={`allocation-status ${
                         total?.allocated > total?.available
                           ? "over"
@@ -4612,13 +4930,11 @@ function DeliveryPlan({
                       }`}
                     >
                       {total?.allocated ?? 0}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                    </span>
+                  </div>
+              </div>
             );
           })}
-        </div>
       </div>
     </div>
   );
@@ -5658,8 +5974,7 @@ function DeliveryPlan({
       )}
       {importDiagnosticsPanel}
       {kanbanPanel}
-      {allocationMatrixEditor}
-      {quarterCapacityOverview}
+      {renderAllocationMatrixEditor()}
       {capacityTools}
       {reconcileAllocationModal}
       {planModal}
@@ -5991,6 +6306,8 @@ function App() {
   const [workspaceFilter, setWorkspaceFilter] = useState("ALL");
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
+  const [migrationWorkspaceFilter, setMigrationWorkspaceFilter] = useState("ALL");
+  const [selectedMigrationWorkspace, setSelectedMigrationWorkspace] = useState(null);
   const [editing, setEditing] = useState(null);
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
@@ -6077,18 +6394,21 @@ function App() {
       const rows = parseCsv(String(reader.result || ""));
       const cleaned = rows
         .filter((r) => r.feature_name)
-        .map((r) => ({
-          id: id(),
-          feature_name: r.feature_name,
-          status: normaliseStatus(r.status),
-          workspace: normaliseWorkspaceName(r.workspace || "Unknown"),
-          owner: r.owner || "",
-          user_count: Number(r.user_count || 0),
-          notes: r.notes || "",
-          Build: r.Build || "",
-          SIT: r.SIT || "",
-          "UAT Internal": r["UAT Internal"] || "",
-        }));
+        .map((r) => {
+          const feature = {
+            id: id(),
+            feature_name: r.feature_name,
+            status: normaliseStatus(r.status),
+            workspace: normaliseWorkspaceName(r.workspace || "Unknown"),
+            owner: r.owner || "",
+            user_count: Number(r.user_count || 0),
+            notes: r.notes || "",
+            Build: r.Build || "",
+            SIT: r.SIT || "",
+            "UAT Internal": r["UAT Internal"] || "",
+          };
+          return feature;
+        });
       setFeatures(cleaned);
       const inputMilestones = Object.fromEntries(
         rows
@@ -6150,6 +6470,13 @@ function App() {
     setFeatures((prev) => prev.map((x) => (x.id === f.id ? f : x)));
     setEditing(null);
   }
+  const migrationFeatures = features.filter(isMigrationFeature);
+  const migrationWorkspaces = [
+    "ALL",
+    ...Array.from(
+      new Set(migrationFeatures.map((feature) => feature.workspace).filter(Boolean)),
+    ).sort(),
+  ];
   function deleteFeature(featureId) {
     setFeatures((prev) => {
       const next = prev.filter((feature) => feature.id !== featureId);
@@ -6207,6 +6534,12 @@ function App() {
             onClick={() => setMode("overview")}
           >
             Overview Dashboard
+          </button>
+          <button
+            className={mode === "migration" ? "active" : ""}
+            onClick={() => setMode("migration")}
+          >
+            Migration Dashboard
           </button>
           <button
             className={mode === "board" ? "active" : ""}
@@ -6280,18 +6613,41 @@ function App() {
           setWorkspaceFilter={setWorkspaceFilter}
         />
       )}{" "}
+      {mode === "migration" && (
+        <ExecutiveDashboard
+          features={migrationFeatures}
+          allocations={allocations}
+          customSprints={customSprints}
+          sprintDates={sprintDates}
+          finalStageByFeatureId={finalStageByFeatureId}
+          milestones={milestones}
+          setMilestones={setMilestones}
+          workspaces={migrationWorkspaces}
+          workspaceFilter={migrationWorkspaceFilter}
+          setWorkspaceFilter={setMigrationWorkspaceFilter}
+          selectedWorkspace={selectedMigrationWorkspace}
+          setSelectedWorkspace={setSelectedMigrationWorkspace}
+          onEditFeature={setEditing}
+          eyebrow="Migration Dashboard"
+          heading="Migration milestone roadmap"
+          showQuarterPipeline={false}
+          showMigrationStatus
+        />
+      )}{" "}
       {mode === "board" && (
         <BoardView
-          features={features}
+          features={migrationFeatures}
           setFeatures={setFeatures}
-          workspaces={workspaces}
+          workspaces={migrationWorkspaces}
           owners={owners}
-          workspaceFilter={workspaceFilter}
-          setWorkspaceFilter={setWorkspaceFilter}
+          workspaceFilter={migrationWorkspaceFilter}
+          setWorkspaceFilter={setMigrationWorkspaceFilter}
           ownerFilter={ownerFilter}
           setOwnerFilter={setOwnerFilter}
           onEdit={setEditing}
-          onAdd={addFeature}
+          onAdd={(feature) =>
+            addFeature({ ...feature, migrationOverride: true })
+          }
           allocations={allocations}
         />
       )}{" "}

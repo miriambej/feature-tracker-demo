@@ -6822,6 +6822,17 @@ function App() {
     <div className={`app ${theme}`}>
       <div className="toolbar">
         <div className="toolbar-left">
+          <div className="product-identity" aria-label="Delivery Intelligence">
+            <span className="product-logo" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <span className="product-name">
+              <b>Delivery Intelligence</b>
+              <small>Portfolio planning</small>
+            </span>
+          </div>
           <button onClick={() => document.getElementById("csv").click()}>
             Import
           </button>

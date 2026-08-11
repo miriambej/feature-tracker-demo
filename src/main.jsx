@@ -118,6 +118,56 @@ const NEXT_STAGE_MILESTONE = {
   bs_signoff_done: "UAT Internal",
 };
 
+function MultiSelectFilter({ label, options, values, onChange, allLabel }) {
+  const selected = new Set(values);
+  const summary =
+    values.length === 0
+      ? allLabel
+      : values.length === 1
+        ? values[0]
+        : `${values.length} ${label.toLowerCase()}s`;
+  const toggle = (option) =>
+    onChange(
+      selected.has(option)
+        ? values.filter((value) => value !== option)
+        : [...values, option],
+    );
+  return (
+    <details className="multi-select-filter">
+      <summary>
+        <span className="multi-select-label">{label}</span>
+        <b>{summary}</b>
+        <i aria-hidden="true" />
+      </summary>
+      <div className="multi-select-menu">
+        <div className="multi-select-menu-head">
+          <strong>Select {label.toLowerCase()}s</strong>
+          <button type="button" onClick={() => onChange([])}>
+            Show all
+          </button>
+        </div>
+        <div className="multi-select-options">
+          {options.map((option) => (
+            <label key={option}>
+              <input
+                type="checkbox"
+                checked={selected.has(option)}
+                onChange={() => toggle(option)}
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </div>
+        <small>
+          {values.length
+            ? `${values.length} selected`
+            : `Showing all ${label.toLowerCase()}s`}
+        </small>
+      </div>
+    </details>
+  );
+}
+
 function id() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 }
@@ -1355,6 +1405,7 @@ function ExecutiveDashboard({
   showQuarterPipeline = true,
   showMigrationStatus = false,
 }) {
+  const [roadmapScale, setRoadmapScale] = useState("sprints");
   async function printExecutiveReport() {
     const source = document.querySelector(".executive-pipeline-panel");
     if (!source) return;
@@ -1610,11 +1661,15 @@ function ExecutiveDashboard({
       const startValue = firstSprint
         ? executiveSprintDateById.get(firstSprint)?.startDate || ""
         : "";
+      const plannedThroughValue = latestSprint
+        ? executiveSprintDateById.get(latestSprint)?.endDate || ""
+        : "";
       return {
         feature,
         quarter: quarterId,
         startValue,
         startDate: parseDate(startValue),
+        plannedThroughDate: parseDate(plannedThroughValue),
         completionSprint,
         endValue,
         endDate: parseDate(endValue),
@@ -1669,6 +1724,8 @@ function ExecutiveDashboard({
     const latestSprint = normaliseSprintName(rows.at(-1)?.sprint);
     const completionSprint = normaliseSprintName(completedUat?.sprint);
     const startValue = executiveSprintDateById.get(firstSprint)?.startDate || "";
+    const plannedThroughValue =
+      executiveSprintDateById.get(latestSprint)?.endDate || "";
     const endValue = completionSprint
       ? executiveSprintDateById.get(completionSprint)?.endDate || ""
       : "";
@@ -1682,6 +1739,7 @@ function ExecutiveDashboard({
       quarter: quarterFromSprint(latestSprint, ""),
       startValue,
       startDate: parseDate(startValue),
+      plannedThroughDate: parseDate(plannedThroughValue),
       completionSprint,
       endValue,
       endDate: parseDate(endValue),
@@ -1718,6 +1776,39 @@ function ExecutiveDashboard({
   const deliveryWindowStart = new Date(2026, 6, 1);
   const deliveryWindowEnd = new Date(2026, 11, 31);
   const deliveryWindowMs = deliveryWindowEnd - deliveryWindowStart;
+  const roadmapToday = Math.max(
+    0,
+    Math.min(100, ((TODAY - deliveryWindowStart) / deliveryWindowMs) * 100),
+  );
+  const roadmapSprints = executiveSprintDates
+    .map((row) => ({
+      ...row,
+      sprint: normaliseSprintName(row.sprint),
+      start: parseDate(row.startDate),
+      end: parseDate(row.endDate),
+    }))
+    .filter(
+      (row) =>
+        row.sprint &&
+        row.start &&
+        row.end &&
+        row.end >= deliveryWindowStart &&
+        row.start <= deliveryWindowEnd,
+    )
+    .map((row) => {
+      const visibleStart = row.start < deliveryWindowStart ? deliveryWindowStart : row.start;
+      const visibleEnd = row.end > deliveryWindowEnd ? deliveryWindowEnd : row.end;
+      const left = Math.max(
+        0,
+        ((visibleStart - deliveryWindowStart) / deliveryWindowMs) * 100,
+      );
+      const right = Math.min(
+        100,
+        ((visibleEnd - deliveryWindowStart) / deliveryWindowMs) * 100,
+      );
+      return { ...row, left, width: Math.max(.8, right - left) };
+    })
+    .sort((a, b) => a.start - b.start);
   const sixMonthWorkspacePlans = Array.from(
     roadmapFeaturePlans.reduce((groups, item) => {
       const workspace = item.feature.workspace || "Unknown";
@@ -1727,6 +1818,7 @@ function ExecutiveDashboard({
           features: [],
           startDate: null,
           endDate: null,
+          plannedThroughDate: null,
           continuing: false,
         });
       const group = groups.get(workspace);
@@ -1736,6 +1828,12 @@ function ExecutiveDashboard({
         group.startDate = itemStart;
       if (item.endDate && (!group.endDate || item.endDate > group.endDate))
         group.endDate = item.endDate;
+      if (
+        item.plannedThroughDate &&
+        (!group.plannedThroughDate ||
+          item.plannedThroughDate > group.plannedThroughDate)
+      )
+        group.plannedThroughDate = item.plannedThroughDate;
       if (!item.isEndFinalised) group.continuing = true;
       return groups;
     }, new Map()).values(),
@@ -1759,14 +1857,24 @@ function ExecutiveDashboard({
         );
       const start = group.startDate || deliveryWindowStart;
       const visualEnd = continuing
-        ? deliveryWindowEnd
-        : group.endDate || deliveryWindowEnd;
+        ? group.plannedThroughDate || group.endDate || start
+        : group.endDate || group.plannedThroughDate || start;
+      const plannedToQuarterEnd =
+        continuing &&
+        group.plannedThroughDate &&
+        group.plannedThroughDate >= new Date(2026, 11, 24);
+      const planningLabel = continuing
+        ? plannedToQuarterEnd
+          ? "Continues beyond Q2"
+          : "Planning in progress"
+        : "Planned completion";
       const left = Math.max(0, Math.min(100, ((start - deliveryWindowStart) / deliveryWindowMs) * 100));
       const right = Math.max(left + 1, Math.min(100, ((visualEnd - deliveryWindowStart) / deliveryWindowMs) * 100));
       return {
         ...group,
         features: workspaceFeatures,
         continuing,
+        planningLabel,
         left,
         width: right - left,
       };
@@ -1922,20 +2030,83 @@ function ExecutiveDashboard({
                 Workspace-level plan from July to December, ordered by planned completion.
               </p>
             </div>
-            <span className="pill-status neutral">{sixMonthWorkspacePlans.length} workspaces</span>
+            <div className="roadmap-view-actions">
+              <div className="timeline-scale-switch" aria-label="Roadmap timeline scale">
+                <button
+                  className={roadmapScale === "months" ? "active" : ""}
+                  onClick={() => setRoadmapScale("months")}
+                >
+                  Months
+                </button>
+                <button
+                  className={roadmapScale === "sprints" ? "active" : ""}
+                  onClick={() => setRoadmapScale("sprints")}
+                >
+                  Sprints
+                </button>
+              </div>
+              <span className="pill-status neutral">{sixMonthWorkspacePlans.length} workspaces</span>
+            </div>
           </div>
           <div className="delivery-roadmap-axis">
             <span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
           </div>
+          {roadmapScale === "sprints" && (
+            <div className="delivery-roadmap-sprint-axis">
+              <span className="sprint-axis-title">Sprint</span>
+              <div className="sprint-axis-track">
+                {roadmapSprints.map((sprintRow) => (
+                  <span
+                    key={sprintRow.sprint}
+                    className={
+                      TODAY >= sprintRow.start && TODAY <= sprintRow.end
+                        ? "current"
+                        : sprintRow.end < TODAY
+                          ? "complete"
+                          : "upcoming"
+                    }
+                    style={{
+                      left: `${sprintRow.left}%`,
+                      width: `${sprintRow.width}%`,
+                    }}
+                    title={`${sprintRow.sprint}: ${fmtDate(sprintRow.startDate)} to ${fmtDate(sprintRow.endDate)}`}
+                  >
+                    {sprintRow.sprint}
+                  </span>
+                ))}
+                <i
+                  className="roadmap-today-marker"
+                  style={{ left: `${roadmapToday}%` }}
+                  title={`Today: ${fmtDate(TODAY)}`}
+                />
+              </div>
+            </div>
+          )}
           <div className="delivery-roadmap-chart">
             {sixMonthWorkspacePlans.map((row) => (
               <div className="delivery-roadmap-row" key={row.workspace}>
                 <div className="delivery-roadmap-name"><b>{row.workspace}</b><small>{row.features.length} feature{row.features.length === 1 ? "" : "s"}</small></div>
                 <div className="delivery-roadmap-track">
+                  {roadmapScale === "sprints" &&
+                    roadmapSprints.map((sprintRow) => (
+                      <span
+                        aria-hidden="true"
+                        className="roadmap-sprint-gridline"
+                        key={sprintRow.sprint}
+                        style={{ left: `${sprintRow.left}%` }}
+                      />
+                    ))}
+                  {roadmapScale === "sprints" && (
+                    <span
+                      aria-hidden="true"
+                      className="roadmap-today-line"
+                      style={{ left: `${roadmapToday}%` }}
+                    />
+                  )}
                   <i
                     className={`${row.continuing ? "continuing" : ""} ${row.width < 22 ? "short-bar" : ""} ${row.left + row.width > 82 ? "label-before" : ""}`}
                     style={{ left: `${row.left}%`, width: `${row.width}%` }}
-                  ><span>{row.continuing ? "Continuing" : fmtDate(row.endDate)}</span></i>
+                  ><span>{row.continuing ? row.planningLabel : fmtDate(row.endDate)}</span></i>
                 </div>
               </div>
             ))}
@@ -1945,7 +2116,7 @@ function ExecutiveDashboard({
               <table className="compact-table delivery-schedule-table">
                 <thead><tr><th>Workspace</th><th>Features</th><th>Planned start</th><th>Planned completion</th></tr></thead>
                 <tbody>{sixMonthWorkspacePlans.map((row) => (
-                  <tr key={row.workspace}><td><b>{row.workspace}</b></td><td>{row.features.length}</td><td>{fmtDate(row.startDate)}</td><td>{row.continuing ? <span className="pill-status neutral">Continuing</span> : fmtDate(row.endDate)}</td></tr>
+                  <tr key={row.workspace}><td><b>{row.workspace}</b></td><td>{row.features.length}</td><td>{fmtDate(row.startDate)}</td><td>{row.continuing ? <span className="pill-status neutral">{row.planningLabel}</span> : fmtDate(row.endDate)}</td></tr>
                 ))}</tbody>
               </table>
             </div>
@@ -2629,8 +2800,8 @@ function DeliveryPlan({
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [planWorkspaceFilter, setPlanWorkspaceFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
-  const [allocationOwnerFilter, setAllocationOwnerFilter] = useState("ALL");
-  const [allocationSprintFilter, setAllocationSprintFilter] = useState("ALL");
+  const [allocationOwnerFilters, setAllocationOwnerFilters] = useState([]);
+  const [allocationSprintFilters, setAllocationSprintFilters] = useState([]);
   const [warning, setWarning] = useState("");
   const [importMessage, setImportMessage] = useState("");
   const [importDiagnostics, setImportDiagnostics] = useState([]);
@@ -2686,6 +2857,11 @@ function DeliveryPlan({
     }));
   }, [sprintOptions, ownerOptions]);
   useEffect(() => {
+    setAllocationSprintFilters((current) =>
+      current.filter((sprintId) => sprintId.startsWith(quarter)),
+    );
+  }, [quarter]);
+  useEffect(() => {
     const q2Sprints = Q2_SPRINT_DATES.map((row) => row.sprint);
     setCustomSprints((prev) =>
       Array.from(new Set([...prev.map(normaliseSprintName), ...q2Sprints])).sort(),
@@ -2729,13 +2905,6 @@ function DeliveryPlan({
         : { ...current, sprint: nextSprint },
     );
   }, [quarter, visibleSprintOptions, sprint]);
-  useEffect(() => {
-    if (
-      allocationSprintFilter !== "ALL" &&
-      !visibleSprintOptions.includes(allocationSprintFilter)
-    )
-      setAllocationSprintFilter("ALL");
-  }, [visibleSprintOptions, allocationSprintFilter]);
   const prodSupportFeatures = useMemo(
     () => prodSupportStories.map(prodSupportStoryFeature),
     [prodSupportStories],
@@ -3083,7 +3252,10 @@ function DeliveryPlan({
       counted: [],
     };
   });
-  const capacityOverviewRows = ownerOptions.map((owner) => ({
+  const allocationCapacityOwners = allocationOwnerFilters.length
+    ? ownerOptions.filter((owner) => allocationOwnerFilters.includes(owner))
+    : ownerOptions;
+  const capacityOverviewRows = allocationCapacityOwners.map((owner) => ({
     owner,
     sprints: visibleSprintOptions.map((sprintId) => {
       const key = ownerSprintKey(owner, sprintId);
@@ -4500,11 +4672,11 @@ function DeliveryPlan({
     .filter(
       (a) =>
         (!a.sprint || String(a.sprint).startsWith(quarter)) &&
-        (allocationSprintFilter === "ALL" ||
-          a.sprint === allocationSprintFilter) &&
+        (allocationSprintFilters.length === 0 ||
+          allocationSprintFilters.includes(a.sprint)) &&
         (ownerFilter === "ALL" || a.owner === ownerFilter) &&
-        (allocationOwnerFilter === "ALL" ||
-          a.owner === allocationOwnerFilter) &&
+        (allocationOwnerFilters.length === 0 ||
+          allocationOwnerFilters.includes(a.owner)) &&
         (planWorkspaceFilter === "ALL" ||
           allocationWorkspace(a) === planWorkspaceFilter) &&
         (stageFilter === "ALL" || a.stage === stageFilter),
@@ -4517,7 +4689,11 @@ function DeliveryPlan({
   const matrixSprints = Array.from(
     new Set(
       [
-        ...visibleSprintOptions,
+        ...(allocationSprintFilters.length
+          ? visibleSprintOptions.filter((sprintId) =>
+              allocationSprintFilters.includes(sprintId),
+            )
+          : visibleSprintOptions),
         ...filteredAllocations.map((a) => a.sprint || "Unscheduled"),
       ].filter(Boolean),
     ),
@@ -5010,27 +5186,20 @@ function DeliveryPlan({
               ))}
             </select>
           </label>
-          <label className="linked-filter">
-            Sprint
-            <select
-              value={allocationSprintFilter}
-              onChange={(e) => setAllocationSprintFilter(e.target.value)}
-            >
-              <option value="ALL">All {quarter} sprints</option>
-              {visibleSprintOptions.map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <select
-            value={allocationOwnerFilter}
-            onChange={(e) => setAllocationOwnerFilter(e.target.value)}
-          >
-            <option value="ALL">All Owners</option>
-            {ownerOptions.map((o) => (
-              <option key={o}>{o}</option>
-            ))}
-          </select>
+          <MultiSelectFilter
+            label="Sprint"
+            options={visibleSprintOptions}
+            values={allocationSprintFilters}
+            onChange={setAllocationSprintFilters}
+            allLabel={`All ${quarter} sprints`}
+          />
+          <MultiSelectFilter
+            label="Owner"
+            options={ownerOptions}
+            values={allocationOwnerFilters}
+            onChange={setAllocationOwnerFilters}
+            allLabel="All Owners"
+          />
           <select
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
@@ -5210,7 +5379,29 @@ function DeliveryPlan({
                         >
                           {cell?.available ?? "-"}
                         </span>
-                        <span className={`allocation-status ${cell?.tone || "unset"}`}>
+                        <span
+                          className={`allocation-status ${cell?.tone || "unset"}`}
+                          style={{
+                            "--allocation-progress": `${
+                              cell?.available > 0
+                                ? Math.min(
+                                    100,
+                                    Math.max(
+                                      0,
+                                      (Number(cell.allocated || 0) /
+                                        Number(cell.available)) *
+                                        100,
+                                    ),
+                                  )
+                                : 0
+                            }%`,
+                          }}
+                          title={
+                            cell?.available == null
+                              ? "Capacity not set"
+                              : `${cell.allocated} of ${cell.available} days allocated`
+                          }
+                        >
                           {cell?.available == null ? "-" : cell.allocated}
                         </span>
                       </div>
@@ -5227,6 +5418,21 @@ function DeliveryPlan({
                             ? "complete"
                             : "pending"
                       }`}
+                      style={{
+                        "--allocation-progress": `${
+                          total?.available > 0
+                            ? Math.min(
+                                100,
+                                Math.max(
+                                  0,
+                                  (Number(total?.allocated || 0) /
+                                    Number(total.available)) *
+                                    100,
+                                ),
+                              )
+                            : 0
+                        }%`,
+                      }}
                     >
                       {total?.allocated ?? 0}
                     </span>

@@ -56,7 +56,7 @@
 
   function parseRows(text) {
     const state = readState();
-    const existing = new Set((state.features || []).map(f => nameKey(f.feature_name)).filter(Boolean));
+    const existingByKey = new Map((state.features || []).map(f => [nameKey(f.feature_name), f]).filter(([k]) => k));
     const seen = new Set();
 
     return String(text || '')
@@ -65,16 +65,20 @@
       .filter(Boolean)
       .map((name, index) => {
         const key = nameKey(name);
-        const existingDuplicate = existing.has(key);
+        const existingFeature = existingByKey.get(key) || null;
         const batchDuplicate = seen.has(key);
         if (!seen.has(key)) seen.add(key);
+        const alreadyCorrect = !!existingFeature && nameKey(existingFeature.workspace) === key;
+        const action = batchDuplicate ? 'skip' : existingFeature ? (alreadyCorrect ? 'correct' : 'update') : 'create';
         return {
           id: `${index}-${key}`,
           name,
           key,
-          existingDuplicate,
+          existingFeature,
           batchDuplicate,
-          selected: !existingDuplicate && !batchDuplicate,
+          alreadyCorrect,
+          action,
+          selected: action === 'create' || action === 'update',
         };
       });
   }
@@ -94,25 +98,24 @@
     style.id = 'bulk-feature-styles';
     style.textContent = `
       #${MODAL_ID} { position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,.68); display: flex; align-items: center; justify-content: center; padding: 24px; }
-      #${MODAL_ID} .bulk-card { width: min(920px, 96vw); max-height: 92vh; overflow: auto; border-radius: 16px; background: var(--panel, #182130); color: inherit; border: 1px solid rgba(255,255,255,.12); box-shadow: 0 24px 70px rgba(0,0,0,.45); padding: 22px; }
+      #${MODAL_ID} .bulk-card { width: min(980px, 96vw); max-height: 92vh; overflow: auto; border-radius: 16px; background: var(--panel, #182130); color: inherit; border: 1px solid rgba(255,255,255,.12); box-shadow: 0 24px 70px rgba(0,0,0,.45); padding: 22px; }
       #${MODAL_ID} .bulk-head, #${MODAL_ID} .bulk-actions, #${BACKLOG_ID} .bulk-backlog-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
       #${MODAL_ID} textarea { width:100%; min-height:230px; resize:vertical; box-sizing:border-box; margin-top:8px; }
-      #${MODAL_ID} .bulk-grid { display:grid; grid-template-columns:minmax(0,1fr) 220px; gap:16px; margin:16px 0; }
-      #${MODAL_ID} .bulk-preview { max-height:300px; overflow:auto; border:1px solid rgba(127,127,127,.28); border-radius:10px; margin:14px 0; }
-      #${MODAL_ID} .bulk-row { display:grid; grid-template-columns:28px minmax(0,1fr) auto auto; gap:10px; align-items:center; padding:9px 10px; border-bottom:1px solid rgba(127,127,127,.18); }
+      #${MODAL_ID} .bulk-preview { max-height:340px; overflow:auto; border:1px solid rgba(127,127,127,.28); border-radius:10px; margin:14px 0; }
+      #${MODAL_ID} .bulk-row { display:grid; grid-template-columns:28px minmax(0,1fr) minmax(180px,auto) auto; gap:10px; align-items:center; padding:9px 10px; border-bottom:1px solid rgba(127,127,127,.18); }
       #${MODAL_ID} .bulk-row:last-child { border-bottom:0; }
-      #${MODAL_ID} .bulk-dup { opacity:.62; }
-      #${MODAL_ID} .bulk-warning { font-size:12px; font-weight:700; white-space:nowrap; }
+      #${MODAL_ID} .bulk-muted { opacity:.6; }
+      #${MODAL_ID} .bulk-warning, #${MODAL_ID} .bulk-ok { font-size:12px; font-weight:700; white-space:nowrap; }
       #${MODAL_ID} .bulk-remove { padding:4px 8px; font-size:12px; }
       #${MODAL_ID} .bulk-count { margin-top:8px; font-weight:700; }
+      #${MODAL_ID} .bulk-note { margin:14px 0; padding:10px 12px; border-radius:10px; border:1px solid rgba(127,127,127,.25); }
       #${BACKLOG_ID} { margin-top:16px; }
       #${BACKLOG_ID} .bulk-backlog-list { display:grid; gap:8px; margin-top:12px; }
       #${BACKLOG_ID} .bulk-backlog-row { display:grid; grid-template-columns:minmax(0,2fr) minmax(140px,1fr) 110px; gap:12px; align-items:center; padding:10px 12px; border:1px solid rgba(127,127,127,.18); border-radius:10px; }
       #bulk-feature-notice { position:fixed; right:22px; bottom:22px; z-index:100000; background:#176b42; color:white; padding:12px 16px; border-radius:10px; box-shadow:0 12px 30px rgba(0,0,0,.3); font-weight:700; }
       @media (max-width: 720px) {
-        #${MODAL_ID} .bulk-grid { grid-template-columns:1fr; }
         #${MODAL_ID} .bulk-row { grid-template-columns:28px minmax(0,1fr) auto; }
-        #${MODAL_ID} .bulk-warning { grid-column:2/4; }
+        #${MODAL_ID} .bulk-warning, #${MODAL_ID} .bulk-ok { grid-column:2/4; }
         #${BACKLOG_ID} .bulk-backlog-row { grid-template-columns:1fr; }
       }
     `;
@@ -120,27 +123,18 @@
   }
 
   function showNotice(message) {
-    const existing = document.getElementById('bulk-feature-notice');
-    if (existing) existing.remove();
+    document.getElementById('bulk-feature-notice')?.remove();
     const notice = document.createElement('div');
     notice.id = 'bulk-feature-notice';
     notice.textContent = message;
     document.body.appendChild(notice);
-    setTimeout(() => notice.remove(), 5000);
+    setTimeout(() => notice.remove(), 5500);
   }
 
   function openModal() {
     ensureStyles();
     document.getElementById(MODAL_ID)?.remove();
-
-    const state = readState();
-    const workspaces = Array.from(new Set([
-      'Unassigned',
-      ...(state.features || []).map(f => String(f.workspace || '').trim()).filter(Boolean),
-    ])).sort((a, b) => a === 'Unassigned' ? -1 : b === 'Unassigned' ? 1 : a.localeCompare(b));
-
     let rows = [];
-    let workspace = 'Unassigned';
 
     const modal = document.createElement('div');
     modal.id = MODAL_ID;
@@ -149,57 +143,82 @@
         <div class="bulk-head">
           <div>
             <div class="eyebrow">Delivery Plan</div>
-            <h2 style="margin:4px 0 0">Bulk Add Features</h2>
-            <p class="muted" style="margin:6px 0 0">Paste one feature per line, or paste a one-column Excel/Markdown table.</p>
+            <h2 style="margin:4px 0 0">Bulk Add / Fix Features</h2>
+            <p class="muted" style="margin:6px 0 0">Each pasted feature will use the exact same name as its workspace.</p>
           </div>
           <button type="button" data-action="close">Close</button>
         </div>
-        <div class="bulk-grid">
-          <label>Paste feature names
-            <textarea data-role="text" placeholder="A&T SNAP Dataset Repointing to A&T Dashboards\nABS Data Ingestion Automation\nANP marketshare"></textarea>
-          </label>
-          <label>Workspace
-            <select data-role="workspace">${workspaces.map(w => `<option value="${escapeHtml(w)}">${escapeHtml(w)}</option>`).join('')}</select>
-            <small class="muted">Applied to every new feature. You can edit each one later.</small>
-          </label>
+
+        <div class="bulk-note">
+          <b>Workspace rule:</b> Feature name = Workspace name. If a pasted feature already exists, its existing record will be kept and only its workspace will be corrected. Existing IDs, status, owner, notes and planning allocations are preserved.
         </div>
-        <div class="bulk-actions">
+
+        <label>Paste feature names
+          <textarea data-role="text" placeholder="A&T SNAP Dataset Repointing to A&T Dashboards\nABS Data Ingestion Automation\nANP marketshare"></textarea>
+        </label>
+
+        <div class="bulk-actions" style="margin-top:14px">
           <button type="button" data-action="preview">Parse / Preview</button>
           <span class="bulk-count" data-role="count">Paste features to preview.</span>
         </div>
         <div class="bulk-preview" data-role="preview" hidden></div>
         <div class="bulk-actions" style="margin-top:16px">
           <button type="button" data-action="cancel">Cancel</button>
-          <button type="button" data-action="add" disabled>Add Features</button>
+          <button type="button" data-action="apply" disabled>Apply Changes</button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
 
     const text = modal.querySelector('[data-role="text"]');
-    const workspaceSelect = modal.querySelector('[data-role="workspace"]');
     const preview = modal.querySelector('[data-role="preview"]');
     const count = modal.querySelector('[data-role="count"]');
-    const addButton = modal.querySelector('[data-action="add"]');
+    const applyButton = modal.querySelector('[data-action="apply"]');
 
-    function selectedCount() {
-      return rows.filter(r => r.selected && !r.existingDuplicate && !r.batchDuplicate).length;
+    function selectedRows() {
+      return rows.filter(r => r.selected && !r.batchDuplicate && (r.action === 'create' || r.action === 'update'));
     }
 
     function renderPreview() {
-      const ready = selectedCount();
-      const duplicates = rows.filter(r => r.existingDuplicate || r.batchDuplicate).length;
-      count.textContent = `${ready} feature${ready === 1 ? '' : 's'} ready to add${duplicates ? ` · ${duplicates} duplicate${duplicates === 1 ? '' : 's'} skipped` : ''}`;
-      addButton.textContent = `Add ${ready} Feature${ready === 1 ? '' : 's'}`;
-      addButton.disabled = ready === 0;
+      const selected = selectedRows();
+      const creates = selected.filter(r => r.action === 'create').length;
+      const updates = selected.filter(r => r.action === 'update').length;
+      const correct = rows.filter(r => r.action === 'correct').length;
+      const duplicates = rows.filter(r => r.batchDuplicate).length;
+
+      const parts = [];
+      if (creates) parts.push(`${creates} new`);
+      if (updates) parts.push(`${updates} workspace fix${updates === 1 ? '' : 'es'}`);
+      if (correct) parts.push(`${correct} already correct`);
+      if (duplicates) parts.push(`${duplicates} duplicate${duplicates === 1 ? '' : 's'} skipped`);
+      count.textContent = parts.length ? parts.join(' · ') : 'No changes ready.';
+      applyButton.textContent = selected.length ? `Apply ${selected.length} Change${selected.length === 1 ? '' : 's'}` : 'Apply Changes';
+      applyButton.disabled = selected.length === 0;
       preview.hidden = rows.length === 0;
+
       preview.innerHTML = rows.map((row, index) => {
-        const duplicate = row.existingDuplicate || row.batchDuplicate;
-        const warning = row.existingDuplicate ? 'Already exists' : row.batchDuplicate ? 'Duplicate in paste' : '';
-        return `<div class="bulk-row ${duplicate ? 'bulk-dup' : ''}" data-index="${index}">
-          <input type="checkbox" data-action="toggle" ${row.selected ? 'checked' : ''} ${duplicate ? 'disabled' : ''}>
+        let status = '';
+        let rowClass = '';
+        let disabled = '';
+        if (row.batchDuplicate) {
+          status = 'Duplicate in paste — skipped';
+          rowClass = 'bulk-muted';
+          disabled = 'disabled';
+        } else if (row.action === 'update') {
+          status = `Update workspace: ${row.existingFeature?.workspace || 'Unassigned'} → ${row.name}`;
+        } else if (row.action === 'correct') {
+          status = 'Already correct';
+          rowClass = 'bulk-muted';
+          disabled = 'disabled';
+        } else {
+          status = `Create new feature + workspace: ${row.name}`;
+        }
+
+        const statusClass = row.action === 'correct' ? 'bulk-ok' : 'bulk-warning';
+        return `<div class="bulk-row ${rowClass}" data-index="${index}">
+          <input type="checkbox" data-action="toggle" ${row.selected ? 'checked' : ''} ${disabled}>
           <span>${escapeHtml(row.name)}</span>
-          ${warning ? `<span class="bulk-warning">⚠ ${escapeHtml(warning)}</span>` : '<span></span>'}
+          <span class="${statusClass}">${escapeHtml(status)}</span>
           <button type="button" class="bulk-remove" data-action="remove">Remove</button>
         </div>`;
       }).join('');
@@ -228,37 +247,52 @@
         }
         return;
       }
-      if (action === 'add') {
-        const selected = rows.filter(r => r.selected && !r.existingDuplicate && !r.batchDuplicate);
+      if (action === 'apply') {
+        const selected = selectedRows();
         if (!selected.length) return;
+
         const saved = readState();
-        const latestExisting = new Set((saved.features || []).map(f => nameKey(f.feature_name)).filter(Boolean));
-        const clean = selected.filter(row => !latestExisting.has(row.key));
-        const newFeatures = clean.map(row => ({
-          id: uid(),
-          feature_name: row.name,
-          status: 'initial',
-          workspace: workspace || 'Unassigned',
-          owner: '',
-          user_count: 0,
-          notes: '',
-        }));
-        if (!newFeatures.length) {
-          previewText();
-          return;
-        }
-        saved.features = [...newFeatures, ...(saved.features || [])];
+        const features = [...(saved.features || [])];
+        const existingIndexByKey = new Map(features.map((f, index) => [nameKey(f.feature_name), index]).filter(([key]) => key));
+        let created = 0;
+        let updated = 0;
+
+        selected.forEach(row => {
+          const existingIndex = existingIndexByKey.get(row.key);
+          if (existingIndex != null) {
+            const existing = features[existingIndex];
+            if (nameKey(existing.workspace) !== row.key) {
+              features[existingIndex] = { ...existing, workspace: row.name };
+              updated += 1;
+            }
+          } else {
+            const feature = {
+              id: uid(),
+              feature_name: row.name,
+              status: 'initial',
+              workspace: row.name,
+              owner: '',
+              user_count: 0,
+              notes: '',
+            };
+            features.unshift(feature);
+            existingIndexByKey.set(row.key, 0);
+            created += 1;
+          }
+        });
+
+        saved.features = features;
         writeState(saved);
         sessionStorage.setItem(RETURN_KEY, '1');
-        sessionStorage.setItem(NOTICE_KEY, `${newFeatures.length} feature${newFeatures.length === 1 ? '' : 's'} added to Requirement Planning.`);
+        const bits = [];
+        if (created) bits.push(`${created} feature${created === 1 ? '' : 's'} added`);
+        if (updated) bits.push(`${updated} workspace${updated === 1 ? '' : 's'} corrected`);
+        sessionStorage.setItem(NOTICE_KEY, `${bits.join(' · ')}. Feature names now match their workspaces.`);
         location.reload();
       }
     });
 
     modal.addEventListener('change', event => {
-      if (event.target?.dataset?.role === 'workspace') {
-        workspace = event.target.value || 'Unassigned';
-      }
       if (event.target?.dataset?.action === 'toggle') {
         const index = Number(event.target.closest('[data-index]')?.dataset?.index);
         if (Number.isFinite(index) && rows[index]) {
@@ -278,8 +312,8 @@
     const button = document.createElement('button');
     button.id = BUTTON_ID;
     button.type = 'button';
-    button.textContent = 'Bulk Add Features';
-    button.title = 'Paste multiple features into Requirement Planning';
+    button.textContent = 'Bulk Add / Fix Features';
+    button.title = 'Paste multiple features and make each workspace match the feature name';
     button.addEventListener('click', openModal);
     const deliveryButton = Array.from(toolbar.querySelectorAll('button')).find(b => b.textContent.trim() === 'Delivery Plan');
     if (deliveryButton?.nextSibling) toolbar.insertBefore(button, deliveryButton.nextSibling);

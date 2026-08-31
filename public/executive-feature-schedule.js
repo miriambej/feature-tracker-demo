@@ -105,9 +105,8 @@
     const features = Array.isArray(app.features) ? app.features : [];
     const allocations = Array.isArray(app.allocations) ? app.allocations : [];
     const dates = sprintDateMap(app);
-    const milestones = app.milestones || {};
 
-    return features.map((feature) => {
+    const baseRows = features.map((feature) => {
       const rows = allocations
         .filter((a) => allocationFeatureIds(a).includes(feature.id) && normaliseSprint(a.sprint))
         .sort((a, b) => normaliseSprint(a.sprint).localeCompare(normaliseSprint(b.sprint)));
@@ -116,7 +115,9 @@
       const people = Array.from(new Set(rows.map((a) => String(a.owner || '').trim()).filter(Boolean)))
         .sort((a, b) => a.localeCompare(b));
       const firstSprint = normaliseSprint(rows[0].sprint);
+      const latestSprint = normaliseSprint(rows.at(-1)?.sprint);
       const plannedStart = dates.get(firstSprint)?.startDate || '';
+      const plannedThrough = latestSprint ? dates.get(latestSprint)?.endDate || '' : '';
       const finalStage = finalStageFor(feature, app);
       const finalIdx = PLAN_STAGES.indexOf(finalStage);
       const completionRow = rows
@@ -124,22 +125,58 @@
         .at(-1);
       const completionSprint = normaliseSprint(completionRow?.sprint);
       const plannedCompletion = completionSprint ? dates.get(completionSprint)?.endDate || '' : '';
-      const dueValue = milestones[feature.workspace]?.['UAT Internal'] || feature['UAT Internal'] || '';
-      const completionDate = parseDate(plannedCompletion);
-      const dueDate = parseDate(dueValue);
-      let delivery = 'Planning incomplete';
-      if (completionDate && dueDate) delivery = completionDate > dueDate ? 'Past due date' : 'On track';
-      else if (completionDate && !dueDate) delivery = 'Due date not set';
 
       return {
+        workspace: feature.workspace || 'Unknown',
         feature: feature.feature_name || 'Unnamed feature',
         people: people.join(', ') || 'Unassigned',
         plannedStart,
+        plannedThrough,
         plannedCompletion,
-        featureDue: dueValue,
+      };
+    }).filter(Boolean);
+
+    const workspaceTargets = new Map();
+    for (const row of baseRows) {
+      if (!workspaceTargets.has(row.workspace)) {
+        workspaceTargets.set(row.workspace, {
+          completionDate: null,
+          completionValue: '',
+          hasIncomplete: false,
+          plannedThroughDate: null,
+        });
+      }
+      const target = workspaceTargets.get(row.workspace);
+      const completionDate = parseDate(row.plannedCompletion);
+      const plannedThroughDate = parseDate(row.plannedThrough);
+      if (!completionDate) target.hasIncomplete = true;
+      if (completionDate && (!target.completionDate || completionDate > target.completionDate)) {
+        target.completionDate = completionDate;
+        target.completionValue = row.plannedCompletion;
+      }
+      if (plannedThroughDate && (!target.plannedThroughDate || plannedThroughDate > target.plannedThroughDate)) {
+        target.plannedThroughDate = plannedThroughDate;
+      }
+    }
+
+    return baseRows.map((row) => {
+      const target = workspaceTargets.get(row.workspace);
+      const workspaceCompletionFinalised = !!target?.completionDate && !target?.hasIncomplete;
+      const featureDue = workspaceCompletionFinalised ? target.completionValue : '';
+      const completionDate = parseDate(row.plannedCompletion);
+      const dueDate = parseDate(featureDue);
+      let delivery = 'Planning incomplete';
+      if (!workspaceCompletionFinalised) delivery = 'Workspace completion not finalised';
+      else if (!completionDate) delivery = 'Planning incomplete';
+      else if (dueDate) delivery = completionDate > dueDate ? 'Past roadmap completion' : 'On track';
+
+      return {
+        ...row,
+        featureDue,
+        workspaceCompletionFinalised,
         delivery,
       };
-    }).filter(Boolean).sort((a, b) => {
+    }).sort((a, b) => {
       const ad = parseDate(a.featureDue)?.getTime() || Number.MAX_SAFE_INTEGER;
       const bd = parseDate(b.featureDue)?.getTime() || Number.MAX_SAFE_INTEGER;
       return ad - bd || a.feature.localeCompare(b.feature);
@@ -152,13 +189,13 @@
   }
 
   function downloadCsv(rows) {
-    const header = ['Feature', 'People', 'Planned Start', 'Planned Completion', 'Feature Due', 'Delivery'];
+    const header = ['Feature', 'People', 'Planned Start', 'Planned Completion', 'Executive Roadmap Completion', 'Delivery'];
     const body = rows.map((row) => [
       row.feature,
       row.people,
       fmtDate(row.plannedStart),
       row.plannedCompletion ? fmtDate(row.plannedCompletion) : 'Planning incomplete',
-      fmtDate(row.featureDue),
+      row.featureDue ? fmtDate(row.featureDue) : 'Workspace completion not finalised',
       row.delivery,
     ]);
     const csv = [header, ...body].map((r) => r.map(csvEscape).join(',')).join('\r\n');
@@ -183,7 +220,7 @@
       #${PANEL_ID}>summary::-webkit-details-marker{display:none}
       #${PANEL_ID} .efs-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:8px 0 10px}
       #${PANEL_ID} .efs-table-wrap{overflow:auto;max-height:520px}
-      #${PANEL_ID} table{min-width:920px}
+      #${PANEL_ID} table{min-width:980px}
       #${PANEL_ID} .efs-status{font-weight:700}
       #${PANEL_ID} .efs-status.past{color:#ef4444}
       #${PANEL_ID} .efs-status.incomplete{color:#f59e0b}
@@ -203,13 +240,13 @@
     panel.id = PANEL_ID;
     panel.open = false;
     const rowHtml = rows.map((row) => {
-      const statusClass = row.delivery === 'Past due date' ? 'past' : row.delivery === 'Planning incomplete' ? 'incomplete' : '';
-      return `<tr><td><b>${escapeHtml(row.feature)}</b></td><td>${escapeHtml(row.people)}</td><td>${escapeHtml(fmtDate(row.plannedStart))}</td><td>${escapeHtml(row.plannedCompletion ? fmtDate(row.plannedCompletion) : 'Planning incomplete')}</td><td><b>${escapeHtml(fmtDate(row.featureDue))}</b></td><td><span class="efs-status ${statusClass}">${escapeHtml(row.delivery)}</span></td></tr>`;
+      const statusClass = row.delivery === 'Past roadmap completion' ? 'past' : row.delivery !== 'On track' ? 'incomplete' : '';
+      return `<tr><td><b>${escapeHtml(row.feature)}</b></td><td>${escapeHtml(row.people)}</td><td>${escapeHtml(fmtDate(row.plannedStart))}</td><td>${escapeHtml(row.plannedCompletion ? fmtDate(row.plannedCompletion) : 'Planning incomplete')}</td><td><b>${escapeHtml(row.featureDue ? fmtDate(row.featureDue) : 'Not finalised')}</b></td><td><span class="efs-status ${statusClass}">${escapeHtml(row.delivery)}</span></td></tr>`;
     }).join('');
     panel.innerHTML = `
       <summary><span>Feature delivery schedule</span><span>${rows.length} planned features ▾</span></summary>
-      <div class="efs-head"><small>Feature due dates inherit the workspace UAT Internal due date automatically.</small><button type="button" data-efs-export>Export feature table</button></div>
-      <div class="efs-table-wrap"><table class="compact-table"><thead><tr><th>Feature</th><th>People</th><th>Planned start</th><th>Planned completion</th><th>Feature due</th><th>Delivery</th></tr></thead><tbody>${rowHtml || '<tr><td colspan="6">No planned features yet.</td></tr>'}</tbody></table></div>`;
+      <div class="efs-head"><small>Executive roadmap completion is inherited from the workspace completion shown in the six-month roadmap above. It is not taken from Migration Dashboard milestones.</small><button type="button" data-efs-export>Export feature table</button></div>
+      <div class="efs-table-wrap"><table class="compact-table"><thead><tr><th>Feature</th><th>People</th><th>Planned start</th><th>Planned completion</th><th>Executive roadmap completion</th><th>Delivery</th></tr></thead><tbody>${rowHtml || '<tr><td colspan="6">No planned features yet.</td></tr>'}</tbody></table></div>`;
     existingTable.parentElement?.insertBefore(panel, existingTable.nextSibling);
     panel.querySelector('[data-efs-export]')?.addEventListener('click', () => downloadCsv(featureRows()));
     return true;

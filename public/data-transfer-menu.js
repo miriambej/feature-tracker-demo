@@ -18,11 +18,17 @@
       #${MENU_ID}>summary::-webkit-details-marker{display:none}
       #${MENU_ID}>summary::after{content:' ▾';font-size:.8em;opacity:.75}
       #${MENU_ID}[open]>summary::after{content:' ▴'}
-      #${MENU_ID} .data-transfer-popover{position:absolute;top:calc(100% + 7px);left:0;z-index:9990;min-width:230px;padding:7px;background:var(--panel,#172033);border:1px solid rgba(127,127,127,.28);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.28)}
+      #${MENU_ID} .data-transfer-popover{position:absolute;top:calc(100% + 7px);left:0;z-index:9990;min-width:230px;padding:7px;background:#172033;color:#f8fafc;border:1px solid rgba(127,127,127,.28);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.28)}
       #${MENU_ID} .data-transfer-popover button{display:block;width:100%;text-align:left;margin:0;padding:9px 10px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
       #${MENU_ID} .data-transfer-popover button:hover{background:rgba(127,127,127,.14)}
       #${MENU_ID} .data-transfer-divider{height:1px;margin:5px 4px;background:rgba(127,127,127,.22)}
-      #${MENU_ID} .data-transfer-help{display:block;padding:4px 10px 7px;font-size:11px;line-height:1.35;opacity:.7}
+      #${MENU_ID} .data-transfer-help{display:block;padding:4px 10px 7px;font-size:11px;line-height:1.35;opacity:.78;color:inherit}
+      .app.light #${MENU_ID}>summary{background:#fff;color:#252423;border-color:#d2d0ce}
+      .app.light #${MENU_ID} .data-transfer-popover{background:#fff;color:#252423;border-color:#d8d6d4;box-shadow:0 14px 36px rgba(0,0,0,.16)}
+      .app.light #${MENU_ID} .data-transfer-popover button{color:#252423}
+      .app.light #${MENU_ID} .data-transfer-popover button:hover{background:#f3f2f1}
+      .app.light #${MENU_ID} .data-transfer-divider{background:#d8d6d4}
+      .app.light #${MENU_ID} .data-transfer-help{color:#605e5c;opacity:1}
     `;
     document.head.appendChild(style);
   }

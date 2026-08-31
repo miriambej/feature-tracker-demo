@@ -1,5 +1,6 @@
-// The fixed migration scope from feature-tracker-export (9).csv: 79 features.
-// Portfolio imports can contain additional work without expanding this catalogue.
+// The fixed migration scope from feature-tracker-export (9).csv plus confirmed
+// migration features from later planning/export data. Portfolio imports can
+// contain additional work without expanding this catalogue automatically.
 export const MIGRATION_FEATURE_NAMES = [
   "Customer handover and SPI Team Handover",
   "Sfr cards",
@@ -7,6 +8,7 @@ export const MIGRATION_FEATURE_NAMES = [
   "Enhance power automate flow",
   "CW, NESA, UAC Data migration",
   "Historical data migration",
+  "First Nations Report",
   "Skills Overview Dashboard",
   "Removed S&S Providers Dashboard",
   "Payment Allocation History",
@@ -64,6 +66,7 @@ export const MIGRATION_FEATURE_NAMES = [
   "Vacancy Rate Dashboard",
   "Student Journey Survey - RTO",
   "Student Journey Survey",
+  "SJS - CANS Data and Stop words ingestion",
   "ACE Homepage",
   "NAT Files View",
   "Outcome Analysis",

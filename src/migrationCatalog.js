@@ -43,7 +43,6 @@ export const MIGRATION_FEATURE_NAMES = [
   "Customer Service Operations Invoices and Payment Vouchers",
   "FFS Snapshot",
   "NPA Progress Against Benchmark Dashboard",
-  "ProgramStreamParticipantFrequency",
   "Program Stream Participant Frequency",
   "Rebuilding Skills North Coast",
   "Regional Office Participation by Postcode",

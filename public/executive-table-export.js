@@ -104,7 +104,8 @@
         peopleCell.dataset.executivePeople = 'true';
         row.appendChild(peopleCell);
       }
-      peopleCell.textContent = peopleMap.get(workspace) || '—';
+      const people = peopleMap.get(workspace) || '—';
+      if (peopleCell.textContent !== people) peopleCell.textContent = people;
     }
 
     const panel = table.closest('.executive-pipeline-panel');
@@ -126,7 +127,15 @@
 
   function start() {
     enhanceTable();
-    const observer = new MutationObserver(() => enhanceTable());
+    let scheduled = false;
+    const observer = new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        enhanceTable();
+      });
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 

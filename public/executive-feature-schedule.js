@@ -188,7 +188,7 @@
         vertical-align:top;
       }
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(1),
-      .executive-pipeline-panel .delivery-schedule-table td:nth-child(1){width:24%;}
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(1){width:28%;}
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(2),
       .executive-pipeline-panel .delivery-schedule-table td:nth-child(2){width:7%;text-align:center;}
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(3),
@@ -196,7 +196,7 @@
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(4),
       .executive-pipeline-panel .delivery-schedule-table td:nth-child(4){width:16%;}
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(5),
-      .executive-pipeline-panel .delivery-schedule-table td:nth-child(5){width:40%;white-space:normal;overflow-wrap:anywhere;}
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(5){width:36%;white-space:normal;overflow-wrap:anywhere;}
       .executive-pipeline-panel .executive-backlog-wrap{
         grid-column:auto;
         min-width:0;

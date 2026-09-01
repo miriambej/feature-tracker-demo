@@ -2,6 +2,7 @@
   const APP_KEY = 'feature-tracker-v2-full';
   const PEOPLE_HEADER = 'People';
   const EXPORT_BUTTON_ID = 'executive-workspace-export-button';
+  const STYLE_ID = 'executive-workspace-table-styles';
 
   function safeParse(value, fallback = {}) {
     try { return JSON.parse(value); } catch { return fallback; }
@@ -54,7 +55,9 @@
     const workspaceNames = Array.from(
       new Set(features.map((feature) => clean(feature.workspace)).filter(Boolean)),
     );
-    const workspaceByKey = new Map(workspaceNames.map((workspace) => [matchKey(workspace), workspace]));
+    const workspaceByKey = new Map(
+      workspaceNames.map((workspace) => [matchKey(workspace), workspace]),
+    );
     const groups = new Map();
 
     function add(workspace, owner) {
@@ -73,40 +76,28 @@
       const owner = allocation?.owner;
       if (!owner) continue;
 
-      // Direct workspace fields used by different planning/import versions.
-      for (const workspaceValue of [
-        allocation.workspace,
-        allocation.workspaceName,
-      ]) {
+      for (const workspaceValue of [allocation.workspace, allocation.workspaceName]) {
         if (workspaceValue) {
           const canonical = workspaceByKey.get(matchKey(workspaceValue)) || workspaceValue;
           add(canonical, owner);
         }
       }
 
-      // Strongest link: feature IDs.
       for (const featureId of allocationFeatureIds(allocation)) {
         const feature = featureById.get(featureId);
         if (feature?.workspace) add(feature.workspace, owner);
       }
 
-      // Imported planning can retain the feature by name instead of ID.
-      for (const featureName of [
-        allocation.actualFeatureName,
-        allocation.featureName,
-      ]) {
+      for (const featureName of [allocation.actualFeatureName, allocation.featureName]) {
         if (featureName) addFromNamedFeature(featureName, owner);
       }
 
-      // Some grouped planning rows store the workspace/group name here.
       if (allocation.planningGroup) {
         const canonical = workspaceByKey.get(matchKey(allocation.planningGroup));
         if (canonical) add(canonical, owner);
       }
     }
 
-    // Only as a fallback for a workspace with no mapped planning people at all,
-    // use feature owners already recorded in the tracker.
     for (const workspace of workspaceNames) {
       const key = matchKey(workspace);
       if (groups.get(key)?.size) continue;
@@ -118,10 +109,13 @@
     return new Map(
       Array.from(groups.entries()).map(([key, people]) => {
         const names = Array.from(people).sort((a, b) => a.localeCompare(b));
-        return [key, {
-          names,
-          label: names.length > 5 ? 'Whole team' : names.join(', ') || '—',
-        }];
+        return [
+          key,
+          {
+            names,
+            label: names.length > 5 ? 'Whole team' : names.join(', ') || '—',
+          },
+        ];
       }),
     );
   }
@@ -132,7 +126,9 @@
   }
 
   function downloadTable(table) {
-    const headers = Array.from(table.querySelectorAll('thead th')).map((cell) => clean(cell.textContent));
+    const headers = Array.from(table.querySelectorAll('thead th')).map((cell) =>
+      clean(cell.textContent),
+    );
     const rows = Array.from(table.querySelectorAll('tbody tr')).map((row) =>
       Array.from(row.querySelectorAll('td')).map((cell) => clean(cell.textContent)),
     );
@@ -154,6 +150,74 @@
     document.getElementById('executive-feature-schedule-panel')?.remove();
   }
 
+  function hideMilestoneRoadmap(table) {
+    const dashboard = table.closest('.dashboard');
+    if (!dashboard) return;
+    for (const panel of dashboard.querySelectorAll('.roadmap-panel')) {
+      const heading = panel.querySelector('h3');
+      if (clean(heading?.textContent).toLowerCase() === 'milestone roadmap') {
+        panel.dataset.executiveHiddenMilestoneRoadmap = 'true';
+        panel.style.display = 'none';
+      }
+    }
+  }
+
+  function ensureStyles() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      .executive-pipeline-panel .delivery-tables-grid{
+        grid-template-columns:minmax(0,1fr)!important;
+      }
+      .executive-pipeline-panel .delivery-schedule-table-wrap{
+        grid-column:1 / -1;
+        width:100%;
+        min-width:0;
+      }
+      .executive-pipeline-panel .delivery-schedule-table{
+        width:100%;
+        table-layout:fixed;
+      }
+      .executive-pipeline-panel .delivery-schedule-table th,
+      .executive-pipeline-panel .delivery-schedule-table td{
+        padding-left:8px;
+        padding-right:8px;
+        vertical-align:top;
+      }
+      .executive-pipeline-panel .delivery-schedule-table th:nth-child(1),
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(1){width:18%;}
+      .executive-pipeline-panel .delivery-schedule-table th:nth-child(2),
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(2){width:8%;text-align:center;}
+      .executive-pipeline-panel .delivery-schedule-table th:nth-child(3),
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(3){width:14%;}
+      .executive-pipeline-panel .delivery-schedule-table th:nth-child(4),
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(4){width:17%;}
+      .executive-pipeline-panel .delivery-schedule-table th:nth-child(5),
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(5){width:43%;white-space:normal;overflow-wrap:anywhere;}
+      .executive-pipeline-panel .executive-backlog-wrap{
+        grid-column:1 / -1;
+      }
+      [data-executive-workspace-export-controls]{
+        display:flex;
+        justify-content:flex-end;
+        margin-bottom:8px;
+      }
+      @media print{
+        .executive-pipeline-panel .delivery-schedule-table{
+          font-size:10px!important;
+        }
+        .executive-pipeline-panel .delivery-schedule-table th,
+        .executive-pipeline-panel .delivery-schedule-table td{
+          padding:4px 5px!important;
+        }
+        [data-executive-workspace-export-controls]{display:none!important;}
+        [data-executive-hidden-milestone-roadmap="true"]{display:none!important;}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
   function ensureExportButton(table) {
     if (document.getElementById(EXPORT_BUTTON_ID)) return;
     const wrap = table.closest('.delivery-schedule-table-wrap');
@@ -161,9 +225,6 @@
 
     const controls = document.createElement('div');
     controls.dataset.executiveWorkspaceExportControls = 'true';
-    controls.style.display = 'flex';
-    controls.style.justifyContent = 'flex-end';
-    controls.style.marginBottom = '10px';
 
     const button = document.createElement('button');
     button.id = EXPORT_BUTTON_ID;
@@ -183,6 +244,9 @@
     removeOldFeaturePanel();
     const table = document.querySelector('.delivery-schedule-table');
     if (!table) return false;
+
+    ensureStyles();
+    hideMilestoneRoadmap(table);
 
     const peopleMap = peopleByWorkspace();
     const headerRow = table.querySelector('thead tr');
@@ -227,7 +291,9 @@
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest('button');
-    if (button?.textContent?.trim() === 'Executive Dashboard') setTimeout(tryInstall, 50);
+    if (button?.textContent?.trim() === 'Executive Dashboard') {
+      setTimeout(tryInstall, 50);
+    }
   });
 
   document.addEventListener('change', () => setTimeout(enhanceWorkspaceTable, 80));

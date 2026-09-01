@@ -168,10 +168,12 @@
     style.id = STYLE_ID;
     style.textContent = `
       .executive-pipeline-panel .delivery-tables-grid{
-        grid-template-columns:minmax(0,1fr)!important;
+        grid-template-columns:minmax(0,1.65fr) minmax(250px,.85fr)!important;
+        align-items:start;
+        gap:12px!important;
       }
       .executive-pipeline-panel .delivery-schedule-table-wrap{
-        grid-column:1 / -1;
+        grid-column:auto;
         width:100%;
         min-width:0;
       }
@@ -181,22 +183,23 @@
       }
       .executive-pipeline-panel .delivery-schedule-table th,
       .executive-pipeline-panel .delivery-schedule-table td{
-        padding-left:8px;
-        padding-right:8px;
+        padding-left:6px;
+        padding-right:6px;
         vertical-align:top;
       }
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(1),
-      .executive-pipeline-panel .delivery-schedule-table td:nth-child(1){width:18%;}
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(1){width:16%;}
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(2),
-      .executive-pipeline-panel .delivery-schedule-table td:nth-child(2){width:8%;text-align:center;}
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(2){width:7%;text-align:center;}
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(3),
-      .executive-pipeline-panel .delivery-schedule-table td:nth-child(3){width:14%;}
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(3){width:13%;}
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(4),
-      .executive-pipeline-panel .delivery-schedule-table td:nth-child(4){width:17%;}
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(4){width:16%;}
       .executive-pipeline-panel .delivery-schedule-table th:nth-child(5),
-      .executive-pipeline-panel .delivery-schedule-table td:nth-child(5){width:43%;white-space:normal;overflow-wrap:anywhere;}
+      .executive-pipeline-panel .delivery-schedule-table td:nth-child(5){width:48%;white-space:normal;overflow-wrap:anywhere;}
       .executive-pipeline-panel .executive-backlog-wrap{
-        grid-column:1 / -1;
+        grid-column:auto;
+        min-width:0;
       }
       [data-executive-workspace-export-controls]{
         display:flex;
@@ -204,12 +207,19 @@
         margin-bottom:8px;
       }
       @media print{
+        .executive-pipeline-panel .delivery-tables-grid{
+          grid-template-columns:minmax(0,1.65fr) minmax(220px,.85fr)!important;
+          gap:8px!important;
+        }
         .executive-pipeline-panel .delivery-schedule-table{
-          font-size:10px!important;
+          font-size:9px!important;
         }
         .executive-pipeline-panel .delivery-schedule-table th,
         .executive-pipeline-panel .delivery-schedule-table td{
-          padding:4px 5px!important;
+          padding:3px 4px!important;
+        }
+        .executive-pipeline-panel .executive-backlog-table{
+          font-size:9px!important;
         }
         [data-executive-workspace-export-controls]{display:none!important;}
         [data-executive-hidden-milestone-roadmap="true"]{display:none!important;}

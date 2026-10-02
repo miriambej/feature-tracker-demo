@@ -4943,9 +4943,10 @@ function DeliveryPlan({
           .map((row) => row.parentUserStoryTitle || row.item),
       ),
     );
-    if (missingParents.length) {
+    const exportableRows = rowsForSprint.filter((row) => row.parentUserStoryId);
+    if (!exportableRows.length) {
       setWarning(
-        `DevOps export stopped. Add a Parent User Story ID to: ${missingParents.join(", ")}.`,
+        `Nothing exported. Add a Parent User Story ID to at least one task in ${devOpsExportSprint}.`,
       );
       return;
     }
@@ -4964,7 +4965,7 @@ function DeliveryPlan({
       "Completed Work",
     ];
     const rows = [];
-    const groupedByParent = rowsForSprint.reduce((groups, row) => {
+    const groupedByParent = exportableRows.reduce((groups, row) => {
       const key = row.parentUserStoryId;
       if (!groups[key]) groups[key] = [];
       groups[key].push(row);
@@ -5027,7 +5028,9 @@ function DeliveryPlan({
     link.click();
     URL.revokeObjectURL(url);
     setWarning(
-      `Exported ${rowsForSprint.length} DevOps task(s) for ${devOpsExportSprint}, grouped under ${Object.keys(groupedByParent).length} parent User Story item(s). Estimates use 6.5 hours per day.`,
+      missingParents.length
+        ? `Exported ${exportableRows.length} DevOps task(s) for ${devOpsExportSprint}. Skipped ${rowsForSprint.length - exportableRows.length} task(s) without a Parent User Story ID: ${missingParents.join(", ")}.`
+        : `Exported ${exportableRows.length} DevOps task(s) for ${devOpsExportSprint}, grouped under ${Object.keys(groupedByParent).length} parent User Story item(s). Estimates use 6.5 hours per day.`,
     );
   }
   const diagnosticsWithIndex = useMemo(
@@ -6750,6 +6753,11 @@ function DeliveryPlan({
       </div>
       {importMessage && (
         <div className="panel import-message">{importMessage}</div>
+      )}
+      {warning && (
+        <div className="panel import-message" role="status">
+          {warning}
+        </div>
       )}
       {importDiagnosticsPanel}
       {kanbanPanel}

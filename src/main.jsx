@@ -4979,14 +4979,6 @@ function DeliveryPlan({
         "User Story",
         parentTitle,
         "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
       ]);
       childRows.forEach((row) => {
         const selectedStage = normalisePlanStage(row.stage) || row.stage;

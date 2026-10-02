@@ -5905,7 +5905,21 @@ function DeliveryPlan({
         <div><b>Original owner</b><span>{editingAllocationRow.originalOwner || editingAllocationRow.owner || "Unassigned"}</span></div>
         <div><b>Original stage</b><span>{editingAllocationRow.sourceStage || editingAllocationRow.stage || "-"}</span></div>
         <div><b>Original days</b><span>{originalSourceDays}d</span></div>
-        <div className="source-comment"><b>Comment</b><span>{editingAllocationRow.stageComment || "No source comment"}</span></div>
+        <div className="source-comment">
+          <b>Comment</b>
+          <textarea
+            value={editingAllocationRow.stageComment || ""}
+            placeholder="Add a comment for this task, e.g. Power App changes"
+            onChange={(e) =>
+              updateAllocation(editingAllocationRow.id, {
+                stageComment: e.target.value,
+              })
+            }
+          />
+          <small>
+            This comment is saved with the task, shown on hover, and included in the DevOps Description export.
+          </small>
+        </div>
       </div>
       <div className={`reconcile-total ${reconciledDays === originalSourceDays ? "balanced" : "unbalanced"}`}>Planning lines total: {reconciledDays}d / original {originalSourceDays}d {reconciledDays === originalSourceDays ? "(reconciled)" : "(split total differs from source)"}</div>
       <div className="reconcile-table-wrap"><table className="compact-table reconcile-table">

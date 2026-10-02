@@ -4913,7 +4913,7 @@ function DeliveryPlan({
       const tag = stageTag(selectedStage);
       const tags =
         row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
-      const description = row.comment ? `${title}, ${row.comment}` : title;
+      const description = row.comment ? `${title}. Comment: ${row.comment}` : title;
       const estimate = Number(row.days || 0) * 6.5;
       const sprintId = normaliseSprintName(row.sprint);
       const sprintQuarter = quarterFromSprint(sprintId, quarter);

@@ -4844,6 +4844,7 @@ function DeliveryPlan({
       owner: a.owner || "",
       days: Number(a.days || 0),
       outcome: a.isStageComplete ? "Expected Completed" : "Planned",
+      comment: String(a.stageComment || "").trim(),
     }))
     .sort(
       (a, b) =>
@@ -4912,6 +4913,7 @@ function DeliveryPlan({
       const tag = stageTag(selectedStage);
       const tags =
         row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
+      const description = row.comment ? `${title}, ${row.comment}` : title;
       const estimate = Number(row.days || 0) * 6.5;
       const sprintId = normaliseSprintName(row.sprint);
       const sprintQuarter = quarterFromSprint(sprintId, quarter);
@@ -4922,7 +4924,7 @@ function DeliveryPlan({
         devOpsIdentityForOwner(row.owner),
         "New",
         tags,
-        title,
+        description,
         Number(estimate.toFixed(2)),
         Number(estimate.toFixed(2)),
         0,

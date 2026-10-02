@@ -69,7 +69,68 @@ const PLAN_STAGES = [
   "UAT",
 ];
 const DEFAULT_FINAL_STAGE = "UAT";
-const STAGE_OPTIONS = [...PLAN_STAGES, NEEDS_MAPPING_STAGE];
+const PLANNING_STAGE_OPTIONS = [
+  "Requirement",
+  "Tech Feasibility",
+  "Deployment",
+  "Build",
+  "Build Support",
+  "SIT Prep",
+  "SIT",
+  "SIT Support",
+  "BA Sign off prep",
+  "BA Sign off",
+  "BA sign off Support",
+  "SIT+BA Sign off Support",
+  "UAT Prep",
+  "UAT",
+  "UAT Dev Support",
+];
+const STAGE_OPTIONS = [...PLANNING_STAGE_OPTIONS, NEEDS_MAPPING_STAGE];
+const STAGE_TAG_BY_STAGE = {
+  Requirement: "Requirement",
+  "Tech Feasibility": "Tech Feasibility",
+  Deployment: "Deployment",
+  Build: "Build",
+  "Build Support": "Build Support",
+  "SIT Prep": "SIT",
+  SIT: "SIT",
+  "SIT Support": "SIT Support",
+  "BA Sign off prep": "BA Sign off",
+  "BA Sign off": "BA Sign off",
+  "BA sign off Support": "BA sign off Support",
+  "SIT+BA Sign off Support": "SIT Support",
+  "UAT Prep": "UAT",
+  UAT: "UAT",
+  "UAT Dev Support": "UAT Dev Support",
+};
+const STAGE_LIFECYCLE_BY_STAGE = {
+  Requirement: "Requirement",
+  "Tech Feasibility": "Requirement",
+  Deployment: "Deploy",
+  Build: "Build",
+  "Build Support": "Build",
+  "SIT Prep": "SIT",
+  SIT: "SIT",
+  "SIT Support": "SIT",
+  "BA Sign off prep": "BA Sign Off",
+  "BA Sign off": "BA Sign Off",
+  "BA sign off Support": "BA Sign Off",
+  "SIT+BA Sign off Support": "BA Sign Off",
+  "UAT Prep": "UAT",
+  UAT: "UAT",
+  "UAT Dev Support": "UAT",
+};
+const DEVOPS_IDENTITY_BY_OWNER = {
+  Andrew: "Andrew Montgomery <Andrew.Montgomery18@det.nsw.edu.au>",
+  Annie: "Annie Bui (Annie) <Thi.Bui269@det.nsw.edu.au>",
+  Encarmine: "Encarmine Morris <Encarmine.Morris@det.nsw.edu.au>",
+  Fassahat: "Fassahat Qureshi <Fassahat.Qureshi@det.nsw.edu.au>",
+  Sebin: "Sebin Sebastian <Sebin.Sebastian@det.nsw.edu.au>",
+  Sujit: "Sujit Bal <Sujit.Bal@det.nsw.edu.au>",
+  Wasim: "Syed Wasim <Wasim.Syed@det.nsw.edu.au>",
+  Zhi: "Zhijun Ji <Zhijun.Ji@det.nsw.edu.au>",
+};
 const Q2_SPRINT_DATES = [
   ["26Q2S1", "2026-10-07", "2026-10-20"],
   ["26Q2S2", "2026-10-21", "2026-11-03"],
@@ -96,11 +157,8 @@ const Q2_TEAM = [
   "Annie",
   "Encarmine",
   "Fassahat",
-  "Mihir",
-  "Ravi",
   "Sebin",
   "Sujit",
-  "Tabish",
   "Wasim",
   "Zhi",
 ];
@@ -267,7 +325,7 @@ function commentStoryParts(comment) {
 function plannedThrough(featureId, allocations) {
   const stages = allocations
     .filter((a) => allocationHasFeature(a, featureId) && a.isStageComplete)
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   const max = stages.length ? Math.max(...stages) : -1;
   return max >= 0 ? PLAN_STAGES[max] : "Not planned";
@@ -348,34 +406,66 @@ function normalisePlanStage(v) {
     req: "Requirement",
     requirement: "Requirement",
     requirements: "Requirement",
-    "tech feasibility": "Requirement",
-    "technical feasibility": "Requirement",
+    "tech feasibility": "Tech Feasibility",
+    "technical feasibility": "Tech Feasibility",
     build: "Build",
     development: "Build",
+    "build support": "Build Support",
+    "sit prep": "SIT Prep",
     sit: "SIT",
-    deploy: "Deploy",
-    deployment: "Deploy",
-    ba: "BA Sign Off",
-    "ba sign off": "BA Sign Off",
-    "ba signoff": "BA Sign Off",
-    "bs sign off": "BA Sign Off",
-    "business sign off": "BA Sign Off",
-    "skillpi sign off": "BA Sign Off",
-    "skillpi sign-off": "BA Sign Off",
+    "sit support": "SIT Support",
+    deploy: "Deployment",
+    deployment: "Deployment",
+    "ba sign off prep": "BA Sign off prep",
+    ba: "BA Sign off",
+    "ba sign off": "BA Sign off",
+    "ba signoff": "BA Sign off",
+    "bs sign off": "BA Sign off",
+    "business sign off": "BA Sign off",
+    "skillpi sign off": "BA Sign off",
+    "skillpi sign-off": "BA Sign off",
+    "ba sign off support": "BA sign off Support",
+    "sit ba sign off support": "SIT+BA Sign off Support",
+    "uat prep": "UAT Prep",
     uat: "UAT",
     "uat internal": "UAT",
-    "uat dev support": "UAT",
+    "uat dev support": "UAT Dev Support",
     "user acceptance testing": "UAT",
     "needs mapping": NEEDS_MAPPING_STAGE,
     unmapped: NEEDS_MAPPING_STAGE,
   };
   if (STAGE_OPTIONS.includes(raw)) return raw;
-  if (aliases[clean]) return aliases[clean];
-  if (clean.endsWith(" support")) {
-    const parent = clean.replace(/\s+support$/, "");
-    if (aliases[parent]) return aliases[parent];
-  }
-  return "";
+  return aliases[clean] || "";
+}
+function stageLifecycle(stage) {
+  return STAGE_LIFECYCLE_BY_STAGE[normalisePlanStage(stage) || stage] || stage;
+}
+function stagePlanIndex(stage) {
+  return PLAN_STAGES.indexOf(stageLifecycle(stage));
+}
+function stageTag(stage) {
+  const normalised = normalisePlanStage(stage) || stage;
+  return STAGE_TAG_BY_STAGE[normalised] || normalised || "";
+}
+function devOpsIdentityForOwner(owner) {
+  const normalised = normalisePersonName(owner);
+  if (DEVOPS_IDENTITY_BY_OWNER[normalised])
+    return DEVOPS_IDENTITY_BY_OWNER[normalised];
+  const key = String(normalised || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const aliases = {
+    "andrew montgomery": "Andrew",
+    "annie bui": "Annie",
+    "annie bui (annie)": "Annie",
+    "thi bui": "Annie",
+    "encarmine morris": "Encarmine",
+    "fassahat qureshi": "Fassahat",
+    "sebin sebastian": "Sebin",
+    "sujit bal": "Sujit",
+    "syed wasim": "Wasim",
+    "wasim syed": "Wasim",
+    "zhijun ji": "Zhi",
+  };
+  return DEVOPS_IDENTITY_BY_OWNER[aliases[key]] || "";
 }
 function stageSortIndex(stage) {
   const idx = STAGE_OPTIONS.indexOf(stage);
@@ -407,7 +497,7 @@ function nextPlanningStageFromRows(
   const doneIdx = PLAN_STAGES.indexOf(actualCompletedThrough(feature.status));
   const completedIdx = rows
     .filter((a) => a.isStageComplete)
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   if (
     Math.max(doneIdx, completedIdx.length ? Math.max(...completedIdx) : -1) >=
@@ -416,7 +506,7 @@ function nextPlanningStageFromRows(
     return "Planning Complete";
   const actualIdx = PLAN_STAGES.indexOf(actualPlannedThrough(feature.status));
   const plannedIdx = rows
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   const max = Math.max(
     actualIdx,
@@ -1543,7 +1633,7 @@ function ExecutiveDashboard({
           const complete = directlyLinked
             ? allocationFeatureComplete(allocation, feature.id)
             : !!allocation.isStageComplete;
-          const allocationStageIndex = PLAN_STAGES.indexOf(allocation.stage);
+          const allocationStageIndex = stagePlanIndex(allocation.stage);
           return (
             complete &&
             normaliseSprintName(allocation.sprint) &&
@@ -1632,7 +1722,7 @@ function ExecutiveDashboard({
       const completion = rows
         .filter(
           (row) =>
-            PLAN_STAGES.indexOf(row.stage) >= finalStageIndex(finalStage),
+            stagePlanIndex(row.stage) >= finalStageIndex(finalStage),
         )
         .at(-1);
       const fallbackFinish = parseDate(
@@ -2781,22 +2871,23 @@ function DeliveryPlan({
     [sprintOptions, quarter],
   );
   const [sprint, setSprint] = useState(sprintOptions[0] || "26Q1S1");
-  const ownerOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          [
-            ...owners.filter((o) => o !== "ALL"),
-            ...capacities.map((c) => c.owner),
-            ...allocations.map((a) => a.owner),
-            ...daysOff.map((d) => d.owner),
-          ]
-            .map(normalisePersonName)
-            .filter((o) => o && !isRolePlaceholder(o)),
-        ),
-      ).sort(),
-    [owners, capacities, allocations, daysOff],
-  );
+  const ownerOptions = useMemo(() => {
+    const combined = Array.from(
+      new Set(
+        [
+          ...owners.filter((o) => o !== "ALL"),
+          ...capacities.map((c) => c.owner),
+          ...allocations.map((a) => a.owner),
+          ...daysOff.map((d) => d.owner),
+        ]
+          .map(normalisePersonName)
+          .filter((o) => o && !isRolePlaceholder(o)),
+      ),
+    ).sort();
+    return quarter === "26Q2"
+      ? combined.filter((owner) => Q2_TEAM.includes(owner))
+      : combined;
+  }, [owners, capacities, allocations, daysOff, quarter]);
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [planWorkspaceFilter, setPlanWorkspaceFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
@@ -3079,7 +3170,7 @@ function DeliveryPlan({
     );
     const completed = rows
       .filter((a) => a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0);
     const max = Math.max(
       actualIdx,
@@ -3099,11 +3190,11 @@ function DeliveryPlan({
     const floorIdx = PLAN_STAGES.indexOf(floor);
     const plannedOnly = rows
       .filter((a) => !a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0);
     const completedNext = rows
       .filter((a) => a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0)
       .map((i) => Math.min(i + 1, targetIdx));
     const max = Math.min(
@@ -4651,7 +4742,10 @@ function DeliveryPlan({
     setSelectedPlanFeature(feature);
     setQuickPlan((q) => ({
       ...q,
-      stage: stage === "Planning Complete" ? "UAT" : stage,
+      stage:
+        stage === "Planning Complete"
+          ? "UAT"
+          : normalisePlanStage(stage) || "Requirement",
       sprint: visibleSprintOptions.includes(q.sprint)
         ? q.sprint
         : visibleSprintOptions[0],
@@ -4749,7 +4843,7 @@ function DeliveryPlan({
       sourceStage: a.sourceStage || a.stage || "",
       owner: a.owner || "",
       days: Number(a.days || 0),
-      outcome: a.isStageComplete ? "Expected complete" : "Planned",
+      outcome: a.isStageComplete ? "Expected Completed" : "Planned",
     }))
     .sort(
       (a, b) =>
@@ -4767,37 +4861,72 @@ function DeliveryPlan({
     }, {}),
   );
   function exportSprintPlanCsv() {
+    const rowsForQuarter = sprintPlanRows.filter(
+      (row) =>
+        normaliseSprintName(row.sprint).startsWith(quarter) &&
+        row.stage !== NEEDS_MAPPING_STAGE,
+    );
+    const unmappedOwners = Array.from(
+      new Set(
+        rowsForQuarter
+          .filter((row) => !devOpsIdentityForOwner(row.owner))
+          .map((row) => row.owner || "Unassigned"),
+      ),
+    );
+    if (unmappedOwners.length) {
+      setWarning(
+        `DevOps export stopped. Assign a current team member to: ${unmappedOwners.join(", ")}.`,
+      );
+      return;
+    }
     const headers = [
-      "Sprint",
-      "Feature / Planning Item",
-      "Workspace",
-      "Stage",
-      "Source Stage",
-      "Owner",
-      "Days",
-      "Outcome",
+      "Work Item Type",
+      "Title",
+      "Iteration Path",
+      "Assigned To",
+      "State",
+      "Tags",
+      "Description",
+      "Original Estimate",
+      "Remaining Work",
+      "Completed Work",
     ];
-    const rows = sprintPlanRows.map((r) => [
-      r.sprint,
-      r.item,
-      r.workspace,
-      r.stage,
-      r.sourceStage,
-      r.owner,
-      r.days,
-      r.outcome,
-    ]);
+    const rows = rowsForQuarter.map((row) => {
+      const selectedStage = normalisePlanStage(row.stage) || row.stage;
+      const title = `${selectedStage}: ${row.item}`;
+      const tag = stageTag(selectedStage);
+      const tags =
+        row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
+      const estimate = Number(row.days || 0) * 6.5;
+      const sprintId = normaliseSprintName(row.sprint);
+      const sprintQuarter = quarterFromSprint(sprintId, quarter);
+      return [
+        "Task",
+        title,
+        `Skilling for Recovery\\${sprintQuarter}\\Sprint ${sprintId}`,
+        devOpsIdentityForOwner(row.owner),
+        "New",
+        tags,
+        title,
+        Number(estimate.toFixed(2)),
+        Number(estimate.toFixed(2)),
+        0,
+      ];
+    });
     const csv = [
-      headers.join(","),
-      ...rows.map((r) => r.map(csvEscape).join(",")),
+      headers.map(csvEscape).join(","),
+      ...rows.map((row) => row.map(csvEscape).join(",")),
     ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "plan-by-sprint.csv";
-    a.click();
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `devops-tasks-${quarter}.csv`;
+    link.click();
     URL.revokeObjectURL(url);
+    setWarning(
+      `Exported ${rows.length} DevOps task(s) for ${quarter}. Estimates use 6.5 hours per day.`,
+    );
   }
   const diagnosticsWithIndex = useMemo(
     () =>
@@ -6417,6 +6546,7 @@ function DeliveryPlan({
             onChange={importPlanningExcel}
           />
           <button onClick={exportPlanningData}>Export Planning Data</button>
+          <button onClick={exportSprintPlanCsv}>Export DevOps CSV</button>
           <button
             onClick={() => document.getElementById("planning-json").click()}
           >

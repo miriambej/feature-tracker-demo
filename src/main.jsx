@@ -2865,7 +2865,7 @@ function DeliveryPlan({
       ).sort(),
     [sprintOptions],
   );
-  const [quarter, setQuarter] = useState("26Q1");
+  const [quarter, setQuarter] = useState("26Q2");
   const visibleSprintOptions = useMemo(
     () => sprintOptions.filter((s) => s.startsWith(quarter)),
     [sprintOptions, quarter],

@@ -5417,8 +5417,10 @@ function DeliveryPlan({
                         sprintAllocs.map((a) => (
                           <button
                             type="button"
-                            className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""}`}
+                            className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""} ${a.stageComment ? "has-comment" : ""}`}
                             key={a.id}
+                            data-comment={a.stageComment || undefined}
+                            title={a.stageComment || "Click to edit this task"}
                             onClick={() =>
                               setEditingAllocation({
                                 id: String(a.id).includes("::") ? String(a.id).split("::")[0] : a.id,
@@ -5437,6 +5439,11 @@ function DeliveryPlan({
                                 ? " / shared allocation"
                                 : ""}
                             </small>
+                            {a.stageComment && (
+                              <small className="allocation-comment-indicator">
+                                Comment
+                              </small>
+                            )}
                           </button>
                         ))
                       ) : (
@@ -5649,9 +5656,6 @@ function DeliveryPlan({
                   </option>
                 ))}
               </select>
-              {editingAllocationRow.stageComment && (
-                <small>Comment: {editingAllocationRow.stageComment}</small>
-              )}
               {editingAllocationRow.possibleMatches?.length > 0 && (
                 <small>
                   Possible matches:{" "}
@@ -5858,6 +5862,21 @@ function DeliveryPlan({
               </select>
             </label>
           )}
+          <label className="full allocation-comment-field">
+            Comment
+            <textarea
+              value={editingAllocationRow.stageComment || ""}
+              placeholder="Add a comment for this task, e.g. Power App changes"
+              onChange={(e) =>
+                updateAllocation(editingAllocationRow.id, {
+                  stageComment: e.target.value,
+                })
+              }
+            />
+            <small>
+              Saved with this task and shown when you hover over it in Planning Allocations.
+            </small>
+          </label>
         </div>
         <div className="modal-actions">
           <button

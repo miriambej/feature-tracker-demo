@@ -4936,25 +4936,9 @@ function DeliveryPlan({
       setWarning(`No DevOps tasks found for ${devOpsExportSprint}.`);
       return;
     }
-    const missingParents = Array.from(
-      new Set(
-        rowsForSprint
-          .filter((row) => !row.parentUserStoryId)
-          .map((row) => row.parentUserStoryTitle || row.item),
-      ),
-    );
-    const exportableRows = rowsForSprint.filter((row) => row.parentUserStoryId);
-    if (!exportableRows.length) {
-      setWarning(
-        `Nothing exported. Add a Parent User Story ID to at least one task in ${devOpsExportSprint}.`,
-      );
-      return;
-    }
     const headers = [
-      "ID",
       "Work Item Type",
-      "Title 1",
-      "Title 2",
+      "Title",
       "Iteration Path",
       "Assigned To",
       "State",
@@ -4964,49 +4948,30 @@ function DeliveryPlan({
       "Remaining Work",
       "Completed Work",
     ];
-    const rows = [];
-    const groupedByParent = exportableRows.reduce((groups, row) => {
-      const key = row.parentUserStoryId;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(row);
-      return groups;
-    }, {});
-    Object.entries(groupedByParent).forEach(([parentId, childRows]) => {
-      const parentTitle =
-        childRows[0]?.parentUserStoryTitle || `User Story ${parentId}`;
-      rows.push([
-        parentId,
-        "User Story",
-        parentTitle,
-        "",
-      ]);
-      childRows.forEach((row) => {
-        const selectedStage = normalisePlanStage(row.stage) || row.stage;
-        const title = `${selectedStage}: ${row.item}`;
-        const tag = stageTag(selectedStage);
-        const tags =
-          row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
-        const description = row.comment
-          ? `${title}. Comment: ${row.comment}`
-          : title;
-        const estimate = Number(row.days || 0) * 6.5;
-        const sprintId = normaliseSprintName(row.sprint);
-        const sprintQuarter = quarterFromSprint(sprintId, quarter);
-        rows.push([
-          "",
-          "Task",
-          "",
-          title,
-          `Skilling for Recovery\\${sprintQuarter}\\Sprint ${sprintId}`,
-          devOpsIdentityForOwner(row.owner),
-          "New",
-          tags,
-          description,
-          Number(estimate.toFixed(2)),
-          Number(estimate.toFixed(2)),
-          0,
-        ]);
-      });
+    const rows = rowsForSprint.map((row) => {
+      const selectedStage = normalisePlanStage(row.stage) || row.stage;
+      const title = `${selectedStage}: ${row.item}`;
+      const tag = stageTag(selectedStage);
+      const tags =
+        row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
+      const description = row.comment
+        ? `${title}. Comment: ${row.comment}`
+        : title;
+      const estimate = Number(row.days || 0) * 6.5;
+      const sprintId = normaliseSprintName(row.sprint);
+      const sprintQuarter = quarterFromSprint(sprintId, quarter);
+      return [
+        "Task",
+        title,
+        `Skilling for Recovery\\${sprintQuarter}\\Sprint ${sprintId}`,
+        devOpsIdentityForOwner(row.owner),
+        "New",
+        tags,
+        description,
+        Number(estimate.toFixed(2)),
+        Number(estimate.toFixed(2)),
+        0,
+      ];
     });
     const csv = [
       headers.map(csvEscape).join(","),
@@ -5020,9 +4985,7 @@ function DeliveryPlan({
     link.click();
     URL.revokeObjectURL(url);
     setWarning(
-      missingParents.length
-        ? `Exported ${exportableRows.length} DevOps task(s) for ${devOpsExportSprint}. Skipped ${rowsForSprint.length - exportableRows.length} task(s) without a Parent User Story ID: ${missingParents.join(", ")}.`
-        : `Exported ${exportableRows.length} DevOps task(s) for ${devOpsExportSprint}, grouped under ${Object.keys(groupedByParent).length} parent User Story item(s). Estimates use 6.5 hours per day.`,
+      `Exported ${rows.length} DevOps task(s) for ${devOpsExportSprint}. Existing User Stories are not included or modified.`,
     );
   }
   const diagnosticsWithIndex = useMemo(

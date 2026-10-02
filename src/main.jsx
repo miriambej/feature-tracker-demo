@@ -4860,11 +4860,21 @@ function DeliveryPlan({
       return groups;
     }, {}),
   );
+  const devOpsExportSprint =
+    allocationSprintFilters.length === 1
+      ? normaliseSprintName(allocationSprintFilters[0])
+      : "";
+
   function exportSprintPlanCsv() {
-    const selectedSprint = normaliseSprintName(sprint);
+    if (!devOpsExportSprint) {
+      setWarning(
+        "Select exactly one Sprint in Planning Allocations before exporting to DevOps.",
+      );
+      return;
+    }
     const rowsForSprint = sprintPlanRows.filter(
       (row) =>
-        normaliseSprintName(row.sprint) === selectedSprint &&
+        normaliseSprintName(row.sprint) === devOpsExportSprint &&
         row.stage !== NEEDS_MAPPING_STAGE,
     );
     const unmappedOwners = Array.from(
@@ -4881,7 +4891,7 @@ function DeliveryPlan({
       return;
     }
     if (!rowsForSprint.length) {
-      setWarning(`No DevOps tasks found for ${selectedSprint}.`);
+      setWarning(`No DevOps tasks found for ${devOpsExportSprint}.`);
       return;
     }
     const headers = [
@@ -4926,11 +4936,11 @@ function DeliveryPlan({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `devops-tasks-${selectedSprint}.csv`;
+    link.download = `devops-tasks-${devOpsExportSprint}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     setWarning(
-      `Exported ${rows.length} DevOps task(s) for ${selectedSprint}. Estimates use 6.5 hours per day.`,
+      `Exported ${rows.length} DevOps task(s) for ${devOpsExportSprint}. Estimates use 6.5 hours per day.`,
     );
   }
   const diagnosticsWithIndex = useMemo(
@@ -6552,7 +6562,7 @@ function DeliveryPlan({
           />
           <button onClick={exportPlanningData}>Export Planning Data</button>
           <button onClick={exportSprintPlanCsv}>
-            Export DevOps CSV{normaliseSprintName(sprint) ? ` (${normaliseSprintName(sprint)})` : ""}
+            Export DevOps CSV{devOpsExportSprint ? ` (${devOpsExportSprint})` : " (select 1 sprint)"}
           </button>
           <button
             onClick={() => document.getElementById("planning-json").click()}

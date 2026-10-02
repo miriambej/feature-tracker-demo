@@ -299,6 +299,7 @@ function prodSupportStoryFeature(story) {
     owner: "",
     user_count: 0,
     notes: story.notes || "",
+    parentUserStoryId: story.devOpsId || "",
   };
 }
 function commentStoryParts(comment) {
@@ -2596,6 +2597,21 @@ function FeatureModal({ feature, workspaces, owners, onClose, onSave }) {
               ))}
             </select>
           </label>
+          <label>
+            Parent User Story ID
+            <input
+              inputMode="numeric"
+              value={form.parentUserStoryId || ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  parentUserStoryId: e.target.value.replace(/\D/g, ""),
+                })
+              }
+              placeholder="e.g. 123456"
+            />
+            <small>Existing Azure DevOps User Story that these planning tasks belong to.</small>
+          </label>
           <label className="migration-toggle">
             <input
               type="checkbox"
@@ -2905,6 +2921,7 @@ function DeliveryPlan({
     workspace: "",
     owner: "",
     user_count: "",
+    parentUserStoryId: "",
     notes: "",
   });
   const [selectedPlanFeature, setSelectedPlanFeature] = useState(null);
@@ -4847,17 +4864,29 @@ function DeliveryPlan({
         (planWorkspaceFilter === "ALL" ||
           allocationWorkspace(a) === planWorkspaceFilter),
     )
-    .map((a) => ({
-      sprint: a.sprint || "Unscheduled",
-      item: allocationDisplayName(a),
-      workspace: allocationWorkspace(a),
-      stage: a.stage || NEEDS_MAPPING_STAGE,
-      sourceStage: a.sourceStage || a.stage || "",
-      owner: a.owner || "",
-      days: Number(a.days || 0),
-      outcome: a.isStageComplete ? "Expected Completed" : "Planned",
-      comment: String(a.stageComment || "").trim(),
-    }))
+    .map((a) => {
+      const linkedFeatureIds = resolvedAllocationFeatureIds(a);
+      const linkedFeature =
+        linkedFeatureIds.length === 1
+          ? featureById.get(linkedFeatureIds[0])
+          : null;
+      return {
+        sprint: a.sprint || "Unscheduled",
+        item: allocationDisplayName(a),
+        workspace: allocationWorkspace(a),
+        stage: a.stage || NEEDS_MAPPING_STAGE,
+        sourceStage: a.sourceStage || a.stage || "",
+        owner: a.owner || "",
+        days: Number(a.days || 0),
+        outcome: a.isStageComplete ? "Expected Completed" : "Planned",
+        comment: String(a.stageComment || "").trim(),
+        parentUserStoryId: String(
+          linkedFeature?.parentUserStoryId || linkedFeature?.devOpsId || "",
+        ).trim(),
+        parentUserStoryTitle:
+          linkedFeature?.feature_name || allocationDisplayName(a),
+      };
+    })
     .sort(
       (a, b) =>
         a.sprint.localeCompare(b.sprint) ||
@@ -4907,9 +4936,24 @@ function DeliveryPlan({
       setWarning(`No DevOps tasks found for ${devOpsExportSprint}.`);
       return;
     }
+    const missingParents = Array.from(
+      new Set(
+        rowsForSprint
+          .filter((row) => !row.parentUserStoryId)
+          .map((row) => row.parentUserStoryTitle || row.item),
+      ),
+    );
+    if (missingParents.length) {
+      setWarning(
+        `DevOps export stopped. Add a Parent User Story ID to: ${missingParents.join(", ")}.`,
+      );
+      return;
+    }
     const headers = [
+      "ID",
       "Work Item Type",
-      "Title",
+      "Title 1",
+      "Title 2",
       "Iteration Path",
       "Assigned To",
       "State",
@@ -4919,28 +4963,57 @@ function DeliveryPlan({
       "Remaining Work",
       "Completed Work",
     ];
-    const rows = rowsForSprint.map((row) => {
-      const selectedStage = normalisePlanStage(row.stage) || row.stage;
-      const title = `${selectedStage}: ${row.item}`;
-      const tag = stageTag(selectedStage);
-      const tags =
-        row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
-      const description = row.comment ? `${title}. Comment: ${row.comment}` : title;
-      const estimate = Number(row.days || 0) * 6.5;
-      const sprintId = normaliseSprintName(row.sprint);
-      const sprintQuarter = quarterFromSprint(sprintId, quarter);
-      return [
-        "Task",
-        title,
-        `Skilling for Recovery\\${sprintQuarter}\\Sprint ${sprintId}`,
-        devOpsIdentityForOwner(row.owner),
-        "New",
-        tags,
-        description,
-        Number(estimate.toFixed(2)),
-        Number(estimate.toFixed(2)),
-        0,
-      ];
+    const rows = [];
+    const groupedByParent = rowsForSprint.reduce((groups, row) => {
+      const key = row.parentUserStoryId;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(row);
+      return groups;
+    }, {});
+    Object.entries(groupedByParent).forEach(([parentId, childRows]) => {
+      const parentTitle =
+        childRows[0]?.parentUserStoryTitle || `User Story ${parentId}`;
+      rows.push([
+        parentId,
+        "User Story",
+        parentTitle,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ]);
+      childRows.forEach((row) => {
+        const selectedStage = normalisePlanStage(row.stage) || row.stage;
+        const title = `${selectedStage}: ${row.item}`;
+        const tag = stageTag(selectedStage);
+        const tags =
+          row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
+        const description = row.comment
+          ? `${title}. Comment: ${row.comment}`
+          : title;
+        const estimate = Number(row.days || 0) * 6.5;
+        const sprintId = normaliseSprintName(row.sprint);
+        const sprintQuarter = quarterFromSprint(sprintId, quarter);
+        rows.push([
+          "",
+          "Task",
+          "",
+          title,
+          `Skilling for Recovery\\${sprintQuarter}\\Sprint ${sprintId}`,
+          devOpsIdentityForOwner(row.owner),
+          "New",
+          tags,
+          description,
+          Number(estimate.toFixed(2)),
+          Number(estimate.toFixed(2)),
+          0,
+        ]);
+      });
     });
     const csv = [
       headers.map(csvEscape).join(","),
@@ -4954,7 +5027,7 @@ function DeliveryPlan({
     link.click();
     URL.revokeObjectURL(url);
     setWarning(
-      `Exported ${rows.length} DevOps task(s) for ${devOpsExportSprint}. Estimates use 6.5 hours per day.`,
+      `Exported ${rowsForSprint.length} DevOps task(s) for ${devOpsExportSprint}, grouped under ${Object.keys(groupedByParent).length} parent User Story item(s). Estimates use 6.5 hours per day.`,
     );
   }
   const diagnosticsWithIndex = useMemo(
@@ -6795,6 +6868,20 @@ function DeliveryPlan({
                   }
                 />
               </label>
+              <label>
+                Parent User Story ID
+                <input
+                  inputMode="numeric"
+                  value={featureDraft.parentUserStoryId}
+                  placeholder="e.g. 123456"
+                  onChange={(e) =>
+                    setFeatureDraft({
+                      ...featureDraft,
+                      parentUserStoryId: e.target.value.replace(/\D/g, ""),
+                    })
+                  }
+                />
+              </label>
               <label className="full">
                 Notes
                 <textarea
@@ -6817,6 +6904,7 @@ function DeliveryPlan({
                     owner: featureDraft.owner.trim(),
                     user_count: Number(featureDraft.user_count || 0),
                     status: "initial",
+                    parentUserStoryId: featureDraft.parentUserStoryId.trim(),
                     notes: featureDraft.notes.trim(),
                   });
                   setFeatureDraft({
@@ -6824,6 +6912,7 @@ function DeliveryPlan({
                     workspace: "",
                     owner: "",
                     user_count: "",
+                    parentUserStoryId: "",
                     notes: "",
                   });
                   setShowAddFeature(false);
@@ -7112,6 +7201,8 @@ function App() {
             workspace: normaliseWorkspaceName(r.workspace || "Unknown"),
             owner: r.owner || "",
             user_count: Number(r.user_count || 0),
+            parentUserStoryId:
+              r.parent_user_story_id || r.parentUserStoryId || "",
             notes: r.notes || "",
             Build: r.Build || "",
             SIT: r.SIT || "",
@@ -7144,6 +7235,7 @@ function App() {
       "workspace",
       "owner",
       "user_count",
+      "parent_user_story_id",
       "notes",
       "Build",
       "SIT",
@@ -7155,6 +7247,7 @@ function App() {
       f.workspace,
       f.owner,
       f.user_count,
+      f.parentUserStoryId || "",
       f.notes,
       milestones[f.workspace]?.Build || "",
       milestones[f.workspace]?.SIT || "",

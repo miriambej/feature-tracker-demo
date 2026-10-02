@@ -4844,6 +4844,26 @@ function DeliveryPlan({
     (a, b) =>
       a.item.localeCompare(b.item) || a.workspace.localeCompare(b.workspace),
   );
+  const featureForAllocationMatrixRow = (row) => {
+    const linkedIds = Array.from(
+      new Set(
+        row.allocations.flatMap((allocation) =>
+          resolvedAllocationFeatureIds(allocation),
+        ),
+      ),
+    ).filter((featureId) => featureById.has(featureId));
+    if (linkedIds.length === 1) return featureById.get(linkedIds[0]);
+
+    const itemKey = matchKey(row.item);
+    const workspaceKey = matchKey(normaliseWorkspaceName(row.workspace));
+    const exactMatches = mappingFeatures.filter(
+      (feature) =>
+        matchKey(feature.feature_name) === itemKey &&
+        (!workspaceKey ||
+          matchKey(normaliseWorkspaceName(feature.workspace)) === workspaceKey),
+    );
+    return exactMatches.length === 1 ? exactMatches[0] : null;
+  };
   const editingAllocationRow = editingAllocation
     ? allocations.find((a) => a.id === editingAllocation.id)
     : null;
@@ -5438,7 +5458,20 @@ function DeliveryPlan({
             {allocationMatrixRows.map((row) => (
               <tr key={row.key}>
                 <td className="allocation-feature-cell">
-                  <b>{row.item}</b>
+                  {featureForAllocationMatrixRow(row) ? (
+                    <button
+                      type="button"
+                      className="allocation-feature-link"
+                      onClick={() =>
+                        openPlanFeature(featureForAllocationMatrixRow(row))
+                      }
+                      title="Open feature planning"
+                    >
+                      {row.item}
+                    </button>
+                  ) : (
+                    <b>{row.item}</b>
+                  )}
                   <small>{row.workspace}</small>
                   <small>
                     {row.allocations.length} allocation

@@ -4861,14 +4861,15 @@ function DeliveryPlan({
     }, {}),
   );
   function exportSprintPlanCsv() {
-    const rowsForQuarter = sprintPlanRows.filter(
+    const selectedSprint = normaliseSprintName(sprint);
+    const rowsForSprint = sprintPlanRows.filter(
       (row) =>
-        normaliseSprintName(row.sprint).startsWith(quarter) &&
+        normaliseSprintName(row.sprint) === selectedSprint &&
         row.stage !== NEEDS_MAPPING_STAGE,
     );
     const unmappedOwners = Array.from(
       new Set(
-        rowsForQuarter
+        rowsForSprint
           .filter((row) => !devOpsIdentityForOwner(row.owner))
           .map((row) => row.owner || "Unassigned"),
       ),
@@ -4877,6 +4878,10 @@ function DeliveryPlan({
       setWarning(
         `DevOps export stopped. Assign a current team member to: ${unmappedOwners.join(", ")}.`,
       );
+      return;
+    }
+    if (!rowsForSprint.length) {
+      setWarning(`No DevOps tasks found for ${selectedSprint}.`);
       return;
     }
     const headers = [
@@ -4891,7 +4896,7 @@ function DeliveryPlan({
       "Remaining Work",
       "Completed Work",
     ];
-    const rows = rowsForQuarter.map((row) => {
+    const rows = rowsForSprint.map((row) => {
       const selectedStage = normalisePlanStage(row.stage) || row.stage;
       const title = `${selectedStage}: ${row.item}`;
       const tag = stageTag(selectedStage);
@@ -4921,11 +4926,11 @@ function DeliveryPlan({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `devops-tasks-${quarter}.csv`;
+    link.download = `devops-tasks-${selectedSprint}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     setWarning(
-      `Exported ${rows.length} DevOps task(s) for ${quarter}. Estimates use 6.5 hours per day.`,
+      `Exported ${rows.length} DevOps task(s) for ${selectedSprint}. Estimates use 6.5 hours per day.`,
     );
   }
   const diagnosticsWithIndex = useMemo(
@@ -6546,7 +6551,9 @@ function DeliveryPlan({
             onChange={importPlanningExcel}
           />
           <button onClick={exportPlanningData}>Export Planning Data</button>
-          <button onClick={exportSprintPlanCsv}>Export DevOps CSV</button>
+          <button onClick={exportSprintPlanCsv}>
+            Export DevOps CSV{normaliseSprintName(sprint) ? ` (${normaliseSprintName(sprint)})` : ""}
+          </button>
           <button
             onClick={() => document.getElementById("planning-json").click()}
           >

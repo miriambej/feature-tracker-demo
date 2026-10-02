@@ -2933,6 +2933,18 @@ function DeliveryPlan({
       top: Math.max(12, rect.top - 10),
     });
   }
+  function showCommentTooltip(event, allocation) {
+    const text = String(allocation?.stageComment || "").trim();
+    if (!text) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setCapacityTooltip({
+      text,
+      owner: "Comment",
+      sprintId: allocation?.sprint || "",
+      left: Math.min(window.innerWidth - 170, Math.max(170, rect.left + rect.width / 2)),
+      top: Math.max(12, rect.top - 10),
+    });
+  }
   const [quickPlan, setQuickPlan] = useState({
     stage: "Requirement",
     sprint: sprintOptions[0] || "26Q1S1",
@@ -5421,8 +5433,15 @@ function DeliveryPlan({
                             type="button"
                             className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""} ${a.stageComment ? "has-comment" : ""}`}
                             key={a.id}
-                            data-comment={a.stageComment || undefined}
-                            title={a.stageComment || "Click to edit this task"}
+                            aria-label={
+                              a.stageComment
+                                ? `${a.owner || "Unassigned"}, ${a.stage}, ${Number(a.days || 0)} days. Comment: ${a.stageComment}`
+                                : undefined
+                            }
+                            onMouseEnter={(event) => showCommentTooltip(event, a)}
+                            onMouseLeave={() => setCapacityTooltip(null)}
+                            onFocus={(event) => showCommentTooltip(event, a)}
+                            onBlur={() => setCapacityTooltip(null)}
                             onClick={() =>
                               setEditingAllocation({
                                 id: String(a.id).includes("::") ? String(a.id).split("::")[0] : a.id,

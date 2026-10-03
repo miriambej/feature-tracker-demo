@@ -6158,7 +6158,21 @@ function DeliveryPlan({
       <div className="modal-card">
         <div className="panel-top">
           <div>
-            <h2>{selectedPlanFeature.feature_name}</h2>
+            <h2>
+              {selectedPlanFeature.parentUserStoryId ? (
+                <a
+                  className="devops-user-story-link"
+                  href={`https://educationbi.visualstudio.com/Skilling%20for%20Recovery/_workitems/edit/${selectedPlanFeature.parentUserStoryId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open User Story ${selectedPlanFeature.parentUserStoryId} in Azure DevOps`}
+                >
+                  {selectedPlanFeature.feature_name}
+                </a>
+              ) : (
+                selectedPlanFeature.feature_name
+              )}
+            </h2>
             <small>
               {selectedPlanFeature.workspace} / Current:{" "}
               {STATUS_LABEL[selectedPlanFeature.status] ||

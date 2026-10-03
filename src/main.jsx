@@ -2850,6 +2850,7 @@ function DeliveryPlan({
   setFinalStageByFeatureId,
   onAddFeature,
   onEditFeature,
+  onUpdateFeature,
   onDeleteFeature,
   backlogOrder,
   setBacklogOrder,
@@ -3607,6 +3608,29 @@ function DeliveryPlan({
     );
     setSelectedPlanFeature((current) =>
       current?.planningKey === planningKey
+        ? { ...current, parentUserStoryId: cleanValue }
+        : current,
+    );
+  }
+  function updatePlanUserStoryId(feature, value) {
+    const cleanValue = String(value || "").replace(/\D/g, "");
+    if (feature.planningKey) {
+      updateStandaloneUserStoryId(feature.planningKey, cleanValue);
+      return;
+    }
+    if (feature.isProdSupportStory) {
+      setProdSupportStories((prev) =>
+        prev.map((story) =>
+          story.id === feature.localStoryId
+            ? { ...story, devOpsId: cleanValue }
+            : story,
+        ),
+      );
+    } else if (onUpdateFeature) {
+      onUpdateFeature({ ...feature, parentUserStoryId: cleanValue });
+    }
+    setSelectedPlanFeature((current) =>
+      current?.id === feature.id
         ? { ...current, parentUserStoryId: cleanValue }
         : current,
     );
@@ -6149,33 +6173,18 @@ function DeliveryPlan({
               {priority(selectedPlanFeature.user_count)} /{" "}
               {Number(selectedPlanFeature.user_count || 0).toLocaleString()}{" "}
               users /{" "}
-              {selectedPlanFeature.planningKey ? (
-                <span className="standalone-us-editor">
-                  US:
-                  <input
-                    inputMode="numeric"
-                    aria-label="User Story ID"
-                    value={selectedPlanFeature.parentUserStoryId || ""}
-                    placeholder="Not linked"
-                    onChange={(e) =>
-                      updateStandaloneUserStoryId(
-                        selectedPlanFeature.planningKey,
-                        e.target.value,
-                      )
-                    }
-                  />
-                </span>
-              ) : (
-                <span
-                  className={
-                    selectedPlanFeature.parentUserStoryId
-                      ? "user-story-id linked"
-                      : "user-story-id missing"
+              <span className="standalone-us-editor">
+                US:
+                <input
+                  inputMode="numeric"
+                  aria-label="User Story ID"
+                  value={selectedPlanFeature.parentUserStoryId || ""}
+                  placeholder="Not linked"
+                  onChange={(e) =>
+                    updatePlanUserStoryId(selectedPlanFeature, e.target.value)
                   }
-                >
-                  US: {selectedPlanFeature.parentUserStoryId || "Not linked"}
-                </span>
-              )}
+                />
+              </span>
             </small>
           </div>
           <div className="feature-plan-actions">
@@ -7571,6 +7580,7 @@ function App() {
           setFinalStageByFeatureId={setFinalStageByFeatureId}
           onAddFeature={addFeature}
           onEditFeature={setEditing}
+          onUpdateFeature={saveFeature}
           onDeleteFeature={deleteFeature}
           backlogOrder={backlogOrder}
           setBacklogOrder={setBacklogOrder}

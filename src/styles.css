@@ -94,3 +94,5 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .allocation-feature-summary{display:flex!important;align-items:center;gap:8px;flex-wrap:wrap}.user-story-id{display:inline-flex;align-items:center;font-weight:800;letter-spacing:.01em}.user-story-id.linked{color:#86efac}.user-story-id.missing{color:#fca5a5}.app.light .user-story-id.linked{color:#15803d}.app.light .user-story-id.missing{color:#b91c1c}
 
 .standalone-us-editor{display:inline-flex;align-items:center;gap:5px;font-weight:800}.standalone-us-editor input{width:86px;min-width:0;padding:2px 6px;border-radius:6px;font-size:11px;line-height:1.2}
+
+.devops-user-story-link{color:inherit;text-decoration:none}.devops-user-story-link:hover{text-decoration:underline}.devops-user-story-link:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:3px}

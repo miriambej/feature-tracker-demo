@@ -69,7 +69,68 @@ const PLAN_STAGES = [
   "UAT",
 ];
 const DEFAULT_FINAL_STAGE = "UAT";
-const STAGE_OPTIONS = [...PLAN_STAGES, NEEDS_MAPPING_STAGE];
+const PLANNING_STAGE_OPTIONS = [
+  "Requirement",
+  "Tech Feasibility",
+  "Deployment",
+  "Build",
+  "Build Support",
+  "SIT Prep",
+  "SIT",
+  "SIT Support",
+  "BA Sign off prep",
+  "BA Sign off",
+  "BA sign off Support",
+  "SIT+BA Sign off Support",
+  "UAT Prep",
+  "UAT",
+  "UAT Dev Support",
+];
+const STAGE_OPTIONS = [...PLANNING_STAGE_OPTIONS, NEEDS_MAPPING_STAGE];
+const STAGE_TAG_BY_STAGE = {
+  Requirement: "Requirement",
+  "Tech Feasibility": "Tech Feasibility",
+  Deployment: "Deployment",
+  Build: "Build",
+  "Build Support": "Build Support",
+  "SIT Prep": "SIT",
+  SIT: "SIT",
+  "SIT Support": "SIT Dev Support",
+  "BA Sign off prep": "BA Sign off",
+  "BA Sign off": "BA Sign off",
+  "BA sign off Support": "BA sign off Dev Support",
+  "SIT+BA Sign off Support": "SIT Dev Support",
+  "UAT Prep": "UAT",
+  UAT: "UAT",
+  "UAT Dev Support": "UAT Dev Support",
+};
+const STAGE_LIFECYCLE_BY_STAGE = {
+  Requirement: "Requirement",
+  "Tech Feasibility": "Requirement",
+  Deployment: "Deploy",
+  Build: "Build",
+  "Build Support": "Build",
+  "SIT Prep": "SIT",
+  SIT: "SIT",
+  "SIT Support": "SIT",
+  "BA Sign off prep": "BA Sign Off",
+  "BA Sign off": "BA Sign Off",
+  "BA sign off Support": "BA Sign Off",
+  "SIT+BA Sign off Support": "BA Sign Off",
+  "UAT Prep": "UAT",
+  UAT: "UAT",
+  "UAT Dev Support": "UAT",
+};
+const DEVOPS_IDENTITY_BY_OWNER = {
+  Andrew: "Andrew Montgomery <Andrew.Montgomery18@det.nsw.edu.au>",
+  Annie: "Annie Bui (Annie) <Thi.Bui269@det.nsw.edu.au>",
+  Encarmine: "Encarmine Morris <Encarmine.Morris@det.nsw.edu.au>",
+  Fassahat: "Fassahat Qureshi <Fassahat.Qureshi@det.nsw.edu.au>",
+  Sebin: "Sebin Sebastian <Sebin.Sebastian@det.nsw.edu.au>",
+  Sujit: "Sujit Bal <Sujit.Bal@det.nsw.edu.au>",
+  Wasim: "Syed Wasim <Wasim.Syed@det.nsw.edu.au>",
+  Zhi: "Zhijun Ji <Zhijun.Ji@det.nsw.edu.au>",
+};
 const Q2_SPRINT_DATES = [
   ["26Q2S1", "2026-10-07", "2026-10-20"],
   ["26Q2S2", "2026-10-21", "2026-11-03"],
@@ -96,11 +157,8 @@ const Q2_TEAM = [
   "Annie",
   "Encarmine",
   "Fassahat",
-  "Mihir",
-  "Ravi",
   "Sebin",
   "Sujit",
-  "Tabish",
   "Wasim",
   "Zhi",
 ];
@@ -241,6 +299,7 @@ function prodSupportStoryFeature(story) {
     owner: "",
     user_count: 0,
     notes: story.notes || "",
+    parentUserStoryId: story.devOpsId || "",
   };
 }
 function commentStoryParts(comment) {
@@ -267,7 +326,7 @@ function commentStoryParts(comment) {
 function plannedThrough(featureId, allocations) {
   const stages = allocations
     .filter((a) => allocationHasFeature(a, featureId) && a.isStageComplete)
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   const max = stages.length ? Math.max(...stages) : -1;
   return max >= 0 ? PLAN_STAGES[max] : "Not planned";
@@ -348,34 +407,66 @@ function normalisePlanStage(v) {
     req: "Requirement",
     requirement: "Requirement",
     requirements: "Requirement",
-    "tech feasibility": "Requirement",
-    "technical feasibility": "Requirement",
+    "tech feasibility": "Tech Feasibility",
+    "technical feasibility": "Tech Feasibility",
     build: "Build",
     development: "Build",
+    "build support": "Build Support",
+    "sit prep": "SIT Prep",
     sit: "SIT",
-    deploy: "Deploy",
-    deployment: "Deploy",
-    ba: "BA Sign Off",
-    "ba sign off": "BA Sign Off",
-    "ba signoff": "BA Sign Off",
-    "bs sign off": "BA Sign Off",
-    "business sign off": "BA Sign Off",
-    "skillpi sign off": "BA Sign Off",
-    "skillpi sign-off": "BA Sign Off",
+    "sit support": "SIT Support",
+    deploy: "Deployment",
+    deployment: "Deployment",
+    "ba sign off prep": "BA Sign off prep",
+    ba: "BA Sign off",
+    "ba sign off": "BA Sign off",
+    "ba signoff": "BA Sign off",
+    "bs sign off": "BA Sign off",
+    "business sign off": "BA Sign off",
+    "skillpi sign off": "BA Sign off",
+    "skillpi sign-off": "BA Sign off",
+    "ba sign off support": "BA sign off Support",
+    "sit ba sign off support": "SIT+BA Sign off Support",
+    "uat prep": "UAT Prep",
     uat: "UAT",
     "uat internal": "UAT",
-    "uat dev support": "UAT",
+    "uat dev support": "UAT Dev Support",
     "user acceptance testing": "UAT",
     "needs mapping": NEEDS_MAPPING_STAGE,
     unmapped: NEEDS_MAPPING_STAGE,
   };
   if (STAGE_OPTIONS.includes(raw)) return raw;
-  if (aliases[clean]) return aliases[clean];
-  if (clean.endsWith(" support")) {
-    const parent = clean.replace(/\s+support$/, "");
-    if (aliases[parent]) return aliases[parent];
-  }
-  return "";
+  return aliases[clean] || "";
+}
+function stageLifecycle(stage) {
+  return STAGE_LIFECYCLE_BY_STAGE[normalisePlanStage(stage) || stage] || stage;
+}
+function stagePlanIndex(stage) {
+  return PLAN_STAGES.indexOf(stageLifecycle(stage));
+}
+function stageTag(stage) {
+  const normalised = normalisePlanStage(stage) || stage;
+  return STAGE_TAG_BY_STAGE[normalised] || normalised || "";
+}
+function devOpsIdentityForOwner(owner) {
+  const normalised = normalisePersonName(owner);
+  if (DEVOPS_IDENTITY_BY_OWNER[normalised])
+    return DEVOPS_IDENTITY_BY_OWNER[normalised];
+  const key = String(normalised || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const aliases = {
+    "andrew montgomery": "Andrew",
+    "annie bui": "Annie",
+    "annie bui (annie)": "Annie",
+    "thi bui": "Annie",
+    "encarmine morris": "Encarmine",
+    "fassahat qureshi": "Fassahat",
+    "sebin sebastian": "Sebin",
+    "sujit bal": "Sujit",
+    "syed wasim": "Wasim",
+    "wasim syed": "Wasim",
+    "zhijun ji": "Zhi",
+  };
+  return DEVOPS_IDENTITY_BY_OWNER[aliases[key]] || "";
 }
 function stageSortIndex(stage) {
   const idx = STAGE_OPTIONS.indexOf(stage);
@@ -407,7 +498,7 @@ function nextPlanningStageFromRows(
   const doneIdx = PLAN_STAGES.indexOf(actualCompletedThrough(feature.status));
   const completedIdx = rows
     .filter((a) => a.isStageComplete)
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   if (
     Math.max(doneIdx, completedIdx.length ? Math.max(...completedIdx) : -1) >=
@@ -416,7 +507,7 @@ function nextPlanningStageFromRows(
     return "Planning Complete";
   const actualIdx = PLAN_STAGES.indexOf(actualPlannedThrough(feature.status));
   const plannedIdx = rows
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   const max = Math.max(
     actualIdx,
@@ -1543,7 +1634,7 @@ function ExecutiveDashboard({
           const complete = directlyLinked
             ? allocationFeatureComplete(allocation, feature.id)
             : !!allocation.isStageComplete;
-          const allocationStageIndex = PLAN_STAGES.indexOf(allocation.stage);
+          const allocationStageIndex = stagePlanIndex(allocation.stage);
           return (
             complete &&
             normaliseSprintName(allocation.sprint) &&
@@ -1632,7 +1723,7 @@ function ExecutiveDashboard({
       const completion = rows
         .filter(
           (row) =>
-            PLAN_STAGES.indexOf(row.stage) >= finalStageIndex(finalStage),
+            stagePlanIndex(row.stage) >= finalStageIndex(finalStage),
         )
         .at(-1);
       const fallbackFinish = parseDate(
@@ -2506,6 +2597,21 @@ function FeatureModal({ feature, workspaces, owners, onClose, onSave }) {
               ))}
             </select>
           </label>
+          <label>
+            Parent User Story ID
+            <input
+              inputMode="numeric"
+              value={form.parentUserStoryId || ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  parentUserStoryId: e.target.value.replace(/\D/g, ""),
+                })
+              }
+              placeholder="e.g. 123456"
+            />
+            <small>Existing Azure DevOps User Story that these planning tasks belong to.</small>
+          </label>
           <label className="migration-toggle">
             <input
               type="checkbox"
@@ -2744,6 +2850,7 @@ function DeliveryPlan({
   setFinalStageByFeatureId,
   onAddFeature,
   onEditFeature,
+  onUpdateFeature,
   onDeleteFeature,
   backlogOrder,
   setBacklogOrder,
@@ -2775,28 +2882,29 @@ function DeliveryPlan({
       ).sort(),
     [sprintOptions],
   );
-  const [quarter, setQuarter] = useState("26Q1");
+  const [quarter, setQuarter] = useState("26Q2");
   const visibleSprintOptions = useMemo(
     () => sprintOptions.filter((s) => s.startsWith(quarter)),
     [sprintOptions, quarter],
   );
   const [sprint, setSprint] = useState(sprintOptions[0] || "26Q1S1");
-  const ownerOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          [
-            ...owners.filter((o) => o !== "ALL"),
-            ...capacities.map((c) => c.owner),
-            ...allocations.map((a) => a.owner),
-            ...daysOff.map((d) => d.owner),
-          ]
-            .map(normalisePersonName)
-            .filter((o) => o && !isRolePlaceholder(o)),
-        ),
-      ).sort(),
-    [owners, capacities, allocations, daysOff],
-  );
+  const ownerOptions = useMemo(() => {
+    const combined = Array.from(
+      new Set(
+        [
+          ...owners.filter((o) => o !== "ALL"),
+          ...capacities.map((c) => c.owner),
+          ...allocations.map((a) => a.owner),
+          ...daysOff.map((d) => d.owner),
+        ]
+          .map(normalisePersonName)
+          .filter((o) => o && !isRolePlaceholder(o)),
+      ),
+    ).sort();
+    return quarter === "26Q2"
+      ? combined.filter((owner) => Q2_TEAM.includes(owner))
+      : combined;
+  }, [owners, capacities, allocations, daysOff, quarter]);
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [planWorkspaceFilter, setPlanWorkspaceFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
@@ -2814,6 +2922,7 @@ function DeliveryPlan({
     workspace: "",
     owner: "",
     user_count: "",
+    parentUserStoryId: "",
     notes: "",
   });
   const [selectedPlanFeature, setSelectedPlanFeature] = useState(null);
@@ -2838,6 +2947,18 @@ function DeliveryPlan({
       text,
       owner,
       sprintId,
+      left: Math.min(window.innerWidth - 170, Math.max(170, rect.left + rect.width / 2)),
+      top: Math.max(12, rect.top - 10),
+    });
+  }
+  function showCommentTooltip(event, allocation) {
+    const text = String(allocation?.stageComment || "").trim();
+    if (!text) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setCapacityTooltip({
+      text,
+      owner: "Comment",
+      sprintId: allocation?.sprint || "",
       left: Math.min(window.innerWidth - 170, Math.max(170, rect.left + rect.width / 2)),
       top: Math.max(12, rect.top - 10),
     });
@@ -3050,6 +3171,11 @@ function DeliveryPlan({
         status: "initial",
         owner: "",
         user_count: 0,
+        parentUserStoryId:
+          standaloneAllocationsByKey
+            .get(key)
+            ?.find((allocation) => allocation.parentUserStoryId)
+            ?.parentUserStoryId || "",
       })),
     ],
     [
@@ -3079,7 +3205,7 @@ function DeliveryPlan({
     );
     const completed = rows
       .filter((a) => a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0);
     const max = Math.max(
       actualIdx,
@@ -3099,11 +3225,11 @@ function DeliveryPlan({
     const floorIdx = PLAN_STAGES.indexOf(floor);
     const plannedOnly = rows
       .filter((a) => !a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0);
     const completedNext = rows
       .filter((a) => a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0)
       .map((i) => Math.min(i + 1, targetIdx));
     const max = Math.min(
@@ -3465,6 +3591,48 @@ function DeliveryPlan({
             }
           : a,
       ),
+    );
+  }
+  function updateStandaloneUserStoryId(planningKey, value) {
+    const cleanValue = String(value || "").replace(/\D/g, "");
+    setAllocations((prev) =>
+      prev.map((allocation) => {
+        const key =
+          allocation.featureName ||
+          allocation.planningGroup ||
+          allocation.workspaceName;
+        if (key !== planningKey || allocationFeatureIds(allocation).length)
+          return allocation;
+        return { ...allocation, parentUserStoryId: cleanValue };
+      }),
+    );
+    setSelectedPlanFeature((current) =>
+      current?.planningKey === planningKey
+        ? { ...current, parentUserStoryId: cleanValue }
+        : current,
+    );
+  }
+  function updatePlanUserStoryId(feature, value) {
+    const cleanValue = String(value || "").replace(/\D/g, "");
+    if (feature.planningKey) {
+      updateStandaloneUserStoryId(feature.planningKey, cleanValue);
+      return;
+    }
+    if (feature.isProdSupportStory) {
+      setProdSupportStories((prev) =>
+        prev.map((story) =>
+          story.id === feature.localStoryId
+            ? { ...story, devOpsId: cleanValue }
+            : story,
+        ),
+      );
+    } else if (onUpdateFeature) {
+      onUpdateFeature({ ...feature, parentUserStoryId: cleanValue });
+    }
+    setSelectedPlanFeature((current) =>
+      current?.id === feature.id
+        ? { ...current, parentUserStoryId: cleanValue }
+        : current,
     );
   }
   function addReconcileLine(source) {
@@ -4651,7 +4819,10 @@ function DeliveryPlan({
     setSelectedPlanFeature(feature);
     setQuickPlan((q) => ({
       ...q,
-      stage: stage === "Planning Complete" ? "UAT" : stage,
+      stage:
+        stage === "Planning Complete"
+          ? "UAT"
+          : normalisePlanStage(stage) || "Requirement",
       sprint: visibleSprintOptions.includes(q.sprint)
         ? q.sprint
         : visibleSprintOptions[0],
@@ -4721,6 +4892,35 @@ function DeliveryPlan({
     (a, b) =>
       a.item.localeCompare(b.item) || a.workspace.localeCompare(b.workspace),
   );
+  const featureForAllocationMatrixRow = (row) => {
+    const linkedIds = Array.from(
+      new Set(
+        row.allocations.flatMap((allocation) =>
+          resolvedAllocationFeatureIds(allocation),
+        ),
+      ),
+    ).filter((featureId) => featureById.has(featureId));
+    if (linkedIds.length === 1) return featureById.get(linkedIds[0]);
+
+    const itemKey = matchKey(row.item);
+    const workspaceKey = matchKey(normaliseWorkspaceName(row.workspace));
+    const exactMatches = mappingFeatures.filter(
+      (feature) =>
+        matchKey(feature.feature_name) === itemKey &&
+        (!workspaceKey ||
+          matchKey(normaliseWorkspaceName(feature.workspace)) === workspaceKey),
+    );
+    if (exactMatches.length === 1) return exactMatches[0];
+
+    const standaloneMatches = planningFeatures.filter(
+      (feature) =>
+        feature.planningKey &&
+        matchKey(feature.feature_name) === itemKey &&
+        (!workspaceKey ||
+          matchKey(normaliseWorkspaceName(feature.workspace)) === workspaceKey),
+    );
+    return standaloneMatches.length === 1 ? standaloneMatches[0] : null;
+  };
   const editingAllocationRow = editingAllocation
     ? allocations.find((a) => a.id === editingAllocation.id)
     : null;
@@ -4741,16 +4941,32 @@ function DeliveryPlan({
         (planWorkspaceFilter === "ALL" ||
           allocationWorkspace(a) === planWorkspaceFilter),
     )
-    .map((a) => ({
-      sprint: a.sprint || "Unscheduled",
-      item: allocationDisplayName(a),
-      workspace: allocationWorkspace(a),
-      stage: a.stage || NEEDS_MAPPING_STAGE,
-      sourceStage: a.sourceStage || a.stage || "",
-      owner: a.owner || "",
-      days: Number(a.days || 0),
-      outcome: a.isStageComplete ? "Expected complete" : "Planned",
-    }))
+    .map((a) => {
+      const linkedFeatureIds = resolvedAllocationFeatureIds(a);
+      const linkedFeature =
+        linkedFeatureIds.length === 1
+          ? featureById.get(linkedFeatureIds[0])
+          : null;
+      return {
+        sprint: a.sprint || "Unscheduled",
+        item: allocationDisplayName(a),
+        workspace: allocationWorkspace(a),
+        stage: a.stage || NEEDS_MAPPING_STAGE,
+        sourceStage: a.sourceStage || a.stage || "",
+        owner: a.owner || "",
+        days: Number(a.days || 0),
+        outcome: a.isStageComplete ? "Expected Completed" : "Planned",
+        comment: String(a.stageComment || "").trim(),
+        parentUserStoryId: String(
+          linkedFeature?.parentUserStoryId ||
+            linkedFeature?.devOpsId ||
+            a.parentUserStoryId ||
+            "",
+        ).trim(),
+        parentUserStoryTitle:
+          linkedFeature?.feature_name || allocationDisplayName(a),
+      };
+    })
     .sort(
       (a, b) =>
         a.sprint.localeCompare(b.sprint) ||
@@ -4766,38 +4982,100 @@ function DeliveryPlan({
       return groups;
     }, {}),
   );
+  const devOpsExportSprint =
+    allocationSprintFilters.length === 1
+      ? normaliseSprintName(allocationSprintFilters[0])
+      : "";
+
   function exportSprintPlanCsv() {
+    if (!devOpsExportSprint) {
+      setWarning(
+        "Select exactly one Sprint in Planning Allocations before exporting to DevOps.",
+      );
+      return;
+    }
+    const rowsForSprint = sprintPlanRows.filter(
+      (row) =>
+        normaliseSprintName(row.sprint) === devOpsExportSprint &&
+        row.stage !== NEEDS_MAPPING_STAGE,
+    );
+    const unmappedOwners = Array.from(
+      new Set(
+        rowsForSprint
+          .filter((row) => !devOpsIdentityForOwner(row.owner))
+          .map((row) => row.owner || "Unassigned"),
+      ),
+    );
+    if (unmappedOwners.length) {
+      setWarning(
+        `DevOps export stopped. Assign a current team member to: ${unmappedOwners.join(", ")}.`,
+      );
+      return;
+    }
+    if (!rowsForSprint.length) {
+      setWarning(`No DevOps tasks found for ${devOpsExportSprint}.`);
+      return;
+    }
     const headers = [
-      "Sprint",
-      "Feature / Planning Item",
-      "Workspace",
-      "Stage",
-      "Source Stage",
-      "Owner",
-      "Days",
-      "Outcome",
+      "Work Item Type",
+      "Title",
+      "Iteration Path",
+      "Assigned To",
+      "State",
+      "Tags",
+      "Description",
+      "Original Estimate",
+      "Remaining Work",
+      "Completed Work",
     ];
-    const rows = sprintPlanRows.map((r) => [
-      r.sprint,
-      r.item,
-      r.workspace,
-      r.stage,
-      r.sourceStage,
-      r.owner,
-      r.days,
-      r.outcome,
-    ]);
+    const rows = rowsForSprint.map((row) => {
+      const selectedStage = normalisePlanStage(row.stage) || row.stage;
+      const title = `${selectedStage}: ${row.item}`;
+      const tag = stageTag(selectedStage);
+      const tags =
+        row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
+      const descriptionParts = [
+        `${String(selectedStage).toUpperCase()}: ${row.item}`,
+      ];
+      if (row.parentUserStoryId) {
+        descriptionParts.push(
+          `USER STORY ID: ${row.parentUserStoryId}`,
+        );
+      }
+      if (row.comment) {
+        descriptionParts.push(`COMMENT: ${row.comment}`);
+      }
+      const description = descriptionParts.join(". ");
+      const estimate = Number(row.days || 0) * 6.5;
+      const sprintId = normaliseSprintName(row.sprint);
+      const sprintQuarter = quarterFromSprint(sprintId, quarter);
+      return [
+        "Task",
+        title,
+        `Skilling for Recovery\\${sprintQuarter}\\Sprint ${sprintId}`,
+        devOpsIdentityForOwner(row.owner),
+        "New",
+        tags,
+        description,
+        Number(estimate.toFixed(2)),
+        Number(estimate.toFixed(2)),
+        0,
+      ];
+    });
     const csv = [
-      headers.join(","),
-      ...rows.map((r) => r.map(csvEscape).join(",")),
+      headers.map(csvEscape).join(","),
+      ...rows.map((row) => row.map(csvEscape).join(",")),
     ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "plan-by-sprint.csv";
-    a.click();
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `devops-tasks-${devOpsExportSprint}.csv`;
+    link.click();
     URL.revokeObjectURL(url);
+    setWarning(
+      `Exported ${rows.length} DevOps task(s) for ${devOpsExportSprint}. Existing User Stories are not included or modified.`,
+    );
   }
   const diagnosticsWithIndex = useMemo(
     () =>
@@ -5249,12 +5527,42 @@ function DeliveryPlan({
             {allocationMatrixRows.map((row) => (
               <tr key={row.key}>
                 <td className="allocation-feature-cell">
-                  <b>{row.item}</b>
+                  {featureForAllocationMatrixRow(row) ? (
+                    <button
+                      type="button"
+                      className="allocation-feature-link"
+                      onClick={() =>
+                        openPlanFeature(featureForAllocationMatrixRow(row))
+                      }
+                      title="Open feature planning"
+                    >
+                      {row.item}
+                    </button>
+                  ) : (
+                    <b>{row.item}</b>
+                  )}
                   <small>{row.workspace}</small>
-                  <small>
-                    {row.allocations.length} allocation
-                    {row.allocations.length === 1 ? "" : "s"} / {row.days} day
-                    {row.days === 1 ? "" : "s"}
+                  <small className="allocation-feature-summary">
+                    <span>
+                      {row.allocations.length} allocation
+                      {row.allocations.length === 1 ? "" : "s"} / {row.days} day
+                      {row.days === 1 ? "" : "s"}
+                    </span>
+                    {(() => {
+                      const feature = featureForAllocationMatrixRow(row);
+                      const userStoryId =
+                        feature?.parentUserStoryId ||
+                        row.allocations.find((allocation) => allocation.parentUserStoryId)
+                          ?.parentUserStoryId ||
+                        "";
+                      return (
+                        <span
+                          className={userStoryId ? "user-story-id linked" : "user-story-id missing"}
+                        >
+                          US: {userStoryId || "Not linked"}
+                        </span>
+                      );
+                    })()}
                   </small>
                   {row.needsMapping && (
                     <span className="mapping-chip">Needs Mapping</span>
@@ -5273,8 +5581,17 @@ function DeliveryPlan({
                         sprintAllocs.map((a) => (
                           <button
                             type="button"
-                            className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""}`}
+                            className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""} ${a.stageComment ? "has-comment" : ""}`}
                             key={a.id}
+                            aria-label={
+                              a.stageComment
+                                ? `${a.owner || "Unassigned"}, ${a.stage}, ${Number(a.days || 0)} days. Comment: ${a.stageComment}`
+                                : undefined
+                            }
+                            onMouseEnter={(event) => showCommentTooltip(event, a)}
+                            onMouseLeave={() => setCapacityTooltip(null)}
+                            onFocus={(event) => showCommentTooltip(event, a)}
+                            onBlur={() => setCapacityTooltip(null)}
                             onClick={() =>
                               setEditingAllocation({
                                 id: String(a.id).includes("::") ? String(a.id).split("::")[0] : a.id,
@@ -5293,6 +5610,11 @@ function DeliveryPlan({
                                 ? " / shared allocation"
                                 : ""}
                             </small>
+                            {a.stageComment && (
+                              <small className="allocation-comment-indicator">
+                                Comment
+                              </small>
+                            )}
                           </button>
                         ))
                       ) : (
@@ -5505,9 +5827,6 @@ function DeliveryPlan({
                   </option>
                 ))}
               </select>
-              {editingAllocationRow.stageComment && (
-                <small>Comment: {editingAllocationRow.stageComment}</small>
-              )}
               {editingAllocationRow.possibleMatches?.length > 0 && (
                 <small>
                   Possible matches:{" "}
@@ -5714,6 +6033,21 @@ function DeliveryPlan({
               </select>
             </label>
           )}
+          <label className="full allocation-comment-field">
+            Comment
+            <textarea
+              value={editingAllocationRow.stageComment || ""}
+              placeholder="Add a comment for this task, e.g. Power App changes"
+              onChange={(e) =>
+                updateAllocation(editingAllocationRow.id, {
+                  stageComment: e.target.value,
+                })
+              }
+            />
+            <small>
+              Saved with this task and shown when you hover over it in Planning Allocations.
+            </small>
+          </label>
         </div>
         <div className="modal-actions">
           <button
@@ -5740,7 +6074,21 @@ function DeliveryPlan({
         <div><b>Original owner</b><span>{editingAllocationRow.originalOwner || editingAllocationRow.owner || "Unassigned"}</span></div>
         <div><b>Original stage</b><span>{editingAllocationRow.sourceStage || editingAllocationRow.stage || "-"}</span></div>
         <div><b>Original days</b><span>{originalSourceDays}d</span></div>
-        <div className="source-comment"><b>Comment</b><span>{editingAllocationRow.stageComment || "No source comment"}</span></div>
+        <div className="source-comment">
+          <b>Comment</b>
+          <textarea
+            value={editingAllocationRow.stageComment || ""}
+            placeholder="Add a comment for this task, e.g. Power App changes"
+            onChange={(e) =>
+              updateAllocation(editingAllocationRow.id, {
+                stageComment: e.target.value,
+              })
+            }
+          />
+          <small>
+            This comment is saved with the task, shown on hover, and included in the DevOps Description export.
+          </small>
+        </div>
       </div>
       <div className={`reconcile-total ${reconciledDays === originalSourceDays ? "balanced" : "unbalanced"}`}>Planning lines total: {reconciledDays}d / original {originalSourceDays}d {reconciledDays === originalSourceDays ? "(reconciled)" : "(split total differs from source)"}</div>
       <div className="reconcile-table-wrap"><table className="compact-table reconcile-table">
@@ -5810,7 +6158,21 @@ function DeliveryPlan({
       <div className="modal-card">
         <div className="panel-top">
           <div>
-            <h2>{selectedPlanFeature.feature_name}</h2>
+            <h2>
+              {selectedPlanFeature.parentUserStoryId ? (
+                <a
+                  className="devops-user-story-link"
+                  href={`https://educationbi.visualstudio.com/Skilling%20for%20Recovery/_workitems/edit/${selectedPlanFeature.parentUserStoryId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open User Story ${selectedPlanFeature.parentUserStoryId} in Azure DevOps`}
+                >
+                  {selectedPlanFeature.feature_name}
+                </a>
+              ) : (
+                selectedPlanFeature.feature_name
+              )}
+            </h2>
             <small>
               {selectedPlanFeature.workspace} / Current:{" "}
               {STATUS_LABEL[selectedPlanFeature.status] ||
@@ -5824,7 +6186,19 @@ function DeliveryPlan({
               Final stage: {featureFinalStage(selectedPlanFeature)} /{" "}
               {priority(selectedPlanFeature.user_count)} /{" "}
               {Number(selectedPlanFeature.user_count || 0).toLocaleString()}{" "}
-              users
+              users /{" "}
+              <span className="standalone-us-editor">
+                US:
+                <input
+                  inputMode="numeric"
+                  aria-label="User Story ID"
+                  value={selectedPlanFeature.parentUserStoryId || ""}
+                  placeholder="Not linked"
+                  onChange={(e) =>
+                    updatePlanUserStoryId(selectedPlanFeature, e.target.value)
+                  }
+                />
+              </span>
             </small>
           </div>
           <div className="feature-plan-actions">
@@ -6417,6 +6791,9 @@ function DeliveryPlan({
             onChange={importPlanningExcel}
           />
           <button onClick={exportPlanningData}>Export Planning Data</button>
+          <button onClick={exportSprintPlanCsv}>
+            Export DevOps CSV{devOpsExportSprint ? ` (${devOpsExportSprint})` : " (select 1 sprint)"}
+          </button>
           <button
             onClick={() => document.getElementById("planning-json").click()}
           >
@@ -6476,6 +6853,11 @@ function DeliveryPlan({
       </div>
       {importMessage && (
         <div className="panel import-message">{importMessage}</div>
+      )}
+      {warning && (
+        <div className="panel import-message" role="status">
+          {warning}
+        </div>
       )}
       {importDiagnosticsPanel}
       {kanbanPanel}
@@ -6594,6 +6976,20 @@ function DeliveryPlan({
                   }
                 />
               </label>
+              <label>
+                Parent User Story ID
+                <input
+                  inputMode="numeric"
+                  value={featureDraft.parentUserStoryId}
+                  placeholder="e.g. 123456"
+                  onChange={(e) =>
+                    setFeatureDraft({
+                      ...featureDraft,
+                      parentUserStoryId: e.target.value.replace(/\D/g, ""),
+                    })
+                  }
+                />
+              </label>
               <label className="full">
                 Notes
                 <textarea
@@ -6616,6 +7012,7 @@ function DeliveryPlan({
                     owner: featureDraft.owner.trim(),
                     user_count: Number(featureDraft.user_count || 0),
                     status: "initial",
+                    parentUserStoryId: featureDraft.parentUserStoryId.trim(),
                     notes: featureDraft.notes.trim(),
                   });
                   setFeatureDraft({
@@ -6623,6 +7020,7 @@ function DeliveryPlan({
                     workspace: "",
                     owner: "",
                     user_count: "",
+                    parentUserStoryId: "",
                     notes: "",
                   });
                   setShowAddFeature(false);
@@ -6911,6 +7309,8 @@ function App() {
             workspace: normaliseWorkspaceName(r.workspace || "Unknown"),
             owner: r.owner || "",
             user_count: Number(r.user_count || 0),
+            parentUserStoryId:
+              r.parent_user_story_id || r.parentUserStoryId || "",
             notes: r.notes || "",
             Build: r.Build || "",
             SIT: r.SIT || "",
@@ -6943,6 +7343,7 @@ function App() {
       "workspace",
       "owner",
       "user_count",
+      "parent_user_story_id",
       "notes",
       "Build",
       "SIT",
@@ -6954,6 +7355,7 @@ function App() {
       f.workspace,
       f.owner,
       f.user_count,
+      f.parentUserStoryId || "",
       f.notes,
       milestones[f.workspace]?.Build || "",
       milestones[f.workspace]?.SIT || "",
@@ -7192,6 +7594,7 @@ function App() {
           setFinalStageByFeatureId={setFinalStageByFeatureId}
           onAddFeature={addFeature}
           onEditFeature={setEditing}
+          onUpdateFeature={saveFeature}
           onDeleteFeature={deleteFeature}
           backlogOrder={backlogOrder}
           setBacklogOrder={setBacklogOrder}

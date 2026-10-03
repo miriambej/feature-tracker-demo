@@ -4974,9 +4974,14 @@ function DeliveryPlan({
       const tag = stageTag(selectedStage);
       const tags =
         row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
-      const description = row.comment
-        ? `${title}. Comment: ${row.comment}`
-        : title;
+      const descriptionParts = [title];
+      if (row.parentUserStoryId) {
+        descriptionParts.push(`Parent User Story ID: ${row.parentUserStoryId}`);
+      }
+      if (row.comment) {
+        descriptionParts.push(`Comment: ${row.comment}`);
+      }
+      const description = descriptionParts.join(". ");
       const estimate = Number(row.days || 0) * 6.5;
       const sprintId = normaliseSprintName(row.sprint);
       const sprintQuarter = quarterFromSprint(sprintId, quarter);

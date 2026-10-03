@@ -4886,7 +4886,16 @@ function DeliveryPlan({
         (!workspaceKey ||
           matchKey(normaliseWorkspaceName(feature.workspace)) === workspaceKey),
     );
-    return exactMatches.length === 1 ? exactMatches[0] : null;
+    if (exactMatches.length === 1) return exactMatches[0];
+
+    const standaloneMatches = planningFeatures.filter(
+      (feature) =>
+        feature.planningKey &&
+        matchKey(feature.feature_name) === itemKey &&
+        (!workspaceKey ||
+          matchKey(normaliseWorkspaceName(feature.workspace)) === workspaceKey),
+    );
+    return standaloneMatches.length === 1 ? standaloneMatches[0] : null;
   };
   const editingAllocationRow = editingAllocation
     ? allocations.find((a) => a.id === editingAllocation.id)

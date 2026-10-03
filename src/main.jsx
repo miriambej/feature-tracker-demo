@@ -4979,7 +4979,7 @@ function DeliveryPlan({
       ];
       if (row.parentUserStoryId) {
         descriptionParts.push(
-          `USER STORY/FEATURE ID: ${row.parentUserStoryId}`,
+          `USER STORY ID: ${row.parentUserStoryId}`,
         );
       }
       if (row.comment) {
@@ -5482,10 +5482,23 @@ function DeliveryPlan({
                     <b>{row.item}</b>
                   )}
                   <small>{row.workspace}</small>
-                  <small>
-                    {row.allocations.length} allocation
-                    {row.allocations.length === 1 ? "" : "s"} / {row.days} day
-                    {row.days === 1 ? "" : "s"}
+                  <small className="allocation-feature-summary">
+                    <span>
+                      {row.allocations.length} allocation
+                      {row.allocations.length === 1 ? "" : "s"} / {row.days} day
+                      {row.days === 1 ? "" : "s"}
+                    </span>
+                    {(() => {
+                      const feature = featureForAllocationMatrixRow(row);
+                      const userStoryId = feature?.parentUserStoryId || "";
+                      return (
+                        <span
+                          className={userStoryId ? "user-story-id linked" : "user-story-id missing"}
+                        >
+                          US: {userStoryId || "Not linked"}
+                        </span>
+                      );
+                    })()}
                   </small>
                   {row.needsMapping && (
                     <span className="mapping-chip">Needs Mapping</span>
@@ -6095,7 +6108,16 @@ function DeliveryPlan({
               Final stage: {featureFinalStage(selectedPlanFeature)} /{" "}
               {priority(selectedPlanFeature.user_count)} /{" "}
               {Number(selectedPlanFeature.user_count || 0).toLocaleString()}{" "}
-              users
+              users /{" "}
+              <span
+                className={
+                  selectedPlanFeature.parentUserStoryId
+                    ? "user-story-id linked"
+                    : "user-story-id missing"
+                }
+              >
+                US: {selectedPlanFeature.parentUserStoryId || "Not linked"}
+              </span>
             </small>
           </div>
           <div className="feature-plan-actions">

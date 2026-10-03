@@ -3170,6 +3170,11 @@ function DeliveryPlan({
         status: "initial",
         owner: "",
         user_count: 0,
+        parentUserStoryId:
+          standaloneAllocationsByKey
+            .get(key)
+            ?.find((allocation) => allocation.parentUserStoryId)
+            ?.parentUserStoryId || "",
       })),
     ],
     [
@@ -3585,6 +3590,25 @@ function DeliveryPlan({
             }
           : a,
       ),
+    );
+  }
+  function updateStandaloneUserStoryId(planningKey, value) {
+    const cleanValue = String(value || "").replace(/\D/g, "");
+    setAllocations((prev) =>
+      prev.map((allocation) => {
+        const key =
+          allocation.featureName ||
+          allocation.planningGroup ||
+          allocation.workspaceName;
+        if (key !== planningKey || allocationFeatureIds(allocation).length)
+          return allocation;
+        return { ...allocation, parentUserStoryId: cleanValue };
+      }),
+    );
+    setSelectedPlanFeature((current) =>
+      current?.planningKey === planningKey
+        ? { ...current, parentUserStoryId: cleanValue }
+        : current,
     );
   }
   function addReconcileLine(source) {
@@ -4901,7 +4925,10 @@ function DeliveryPlan({
         outcome: a.isStageComplete ? "Expected Completed" : "Planned",
         comment: String(a.stageComment || "").trim(),
         parentUserStoryId: String(
-          linkedFeature?.parentUserStoryId || linkedFeature?.devOpsId || "",
+          linkedFeature?.parentUserStoryId ||
+            linkedFeature?.devOpsId ||
+            a.parentUserStoryId ||
+            "",
         ).trim(),
         parentUserStoryTitle:
           linkedFeature?.feature_name || allocationDisplayName(a),
@@ -5490,7 +5517,11 @@ function DeliveryPlan({
                     </span>
                     {(() => {
                       const feature = featureForAllocationMatrixRow(row);
-                      const userStoryId = feature?.parentUserStoryId || "";
+                      const userStoryId =
+                        feature?.parentUserStoryId ||
+                        row.allocations.find((allocation) => allocation.parentUserStoryId)
+                          ?.parentUserStoryId ||
+                        "";
                       return (
                         <span
                           className={userStoryId ? "user-story-id linked" : "user-story-id missing"}
@@ -6109,15 +6140,33 @@ function DeliveryPlan({
               {priority(selectedPlanFeature.user_count)} /{" "}
               {Number(selectedPlanFeature.user_count || 0).toLocaleString()}{" "}
               users /{" "}
-              <span
-                className={
-                  selectedPlanFeature.parentUserStoryId
-                    ? "user-story-id linked"
-                    : "user-story-id missing"
-                }
-              >
-                US: {selectedPlanFeature.parentUserStoryId || "Not linked"}
-              </span>
+              {selectedPlanFeature.planningKey ? (
+                <span className="standalone-us-editor">
+                  US:
+                  <input
+                    inputMode="numeric"
+                    aria-label="User Story ID"
+                    value={selectedPlanFeature.parentUserStoryId || ""}
+                    placeholder="Not linked"
+                    onChange={(e) =>
+                      updateStandaloneUserStoryId(
+                        selectedPlanFeature.planningKey,
+                        e.target.value,
+                      )
+                    }
+                  />
+                </span>
+              ) : (
+                <span
+                  className={
+                    selectedPlanFeature.parentUserStoryId
+                      ? "user-story-id linked"
+                      : "user-story-id missing"
+                  }
+                >
+                  US: {selectedPlanFeature.parentUserStoryId || "Not linked"}
+                </span>
+              )}
             </small>
           </div>
           <div className="feature-plan-actions">

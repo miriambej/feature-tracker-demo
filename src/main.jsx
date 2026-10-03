@@ -4974,12 +4974,16 @@ function DeliveryPlan({
       const tag = stageTag(selectedStage);
       const tags =
         row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
-      const descriptionParts = [title];
+      const descriptionParts = [
+        `${String(selectedStage).toUpperCase()}: ${row.item}`,
+      ];
       if (row.parentUserStoryId) {
-        descriptionParts.push(`Parent User Story ID: ${row.parentUserStoryId}`);
+        descriptionParts.push(
+          `USER STORY/FEATURE ID: ${row.parentUserStoryId}`,
+        );
       }
       if (row.comment) {
-        descriptionParts.push(`Comment: ${row.comment}`);
+        descriptionParts.push(`COMMENT: ${row.comment}`);
       }
       const description = descriptionParts.join(". ");
       const estimate = Number(row.days || 0) * 6.5;

@@ -5555,11 +5555,19 @@ function DeliveryPlan({
                         row.allocations.find((allocation) => allocation.parentUserStoryId)
                           ?.parentUserStoryId ||
                         "";
-                      return (
-                        <span
-                          className={userStoryId ? "user-story-id linked" : "user-story-id missing"}
+                      return userStoryId ? (
+                        <a
+                          className="user-story-id linked devops-user-story-link"
+                          href={`https://educationbi.visualstudio.com/Skilling%20for%20Recovery/_workitems/edit/${userStoryId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={`Open User Story ${userStoryId} in Azure DevOps`}
                         >
-                          US: {userStoryId || "Not linked"}
+                          US: {userStoryId}
+                        </a>
+                      ) : (
+                        <span className="user-story-id missing">
+                          US: Not linked
                         </span>
                       );
                     })()}

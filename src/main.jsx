@@ -4962,6 +4962,9 @@ function DeliveryPlan({
         ...row,
         featureCount: featureKeys.size,
         goalCount: goalKeys.size,
+        features: allocationMatrixRows.filter(
+          (featureRow) => featureRow.workspace === row.workspace,
+        ),
       };
     })
     .sort((a, b) => a.workspace.localeCompare(b.workspace));
@@ -5524,17 +5527,159 @@ function DeliveryPlan({
       </div>
     </div>
   );
+  const renderAllocationFeatureRow = (
+    row,
+    { nested = false, showWorkspace = true } = {},
+  ) => (
+    <tr key={row.key} className={nested ? "allocation-nested-feature-row" : ""}>
+      <td className="allocation-feature-cell">
+        <div className={nested ? "allocation-nested-feature-name" : ""}>
+          {featureForAllocationMatrixRow(row) ? (
+            <button
+              type="button"
+              className="allocation-feature-link"
+              onClick={() =>
+                openPlanFeature(featureForAllocationMatrixRow(row))
+              }
+              title="Open feature planning"
+            >
+              {row.item}
+            </button>
+          ) : (
+            <b>{row.item}</b>
+          )}
+          {showWorkspace && <small>{row.workspace}</small>}
+        </div>
+        <small className="allocation-feature-summary">
+          <span>
+            {row.allocations.length} allocation
+            {row.allocations.length === 1 ? "" : "s"} / {row.days} day
+            {row.days === 1 ? "" : "s"}
+          </span>
+          {(() => {
+            const feature = featureForAllocationMatrixRow(row);
+            const userStoryId =
+              feature?.parentUserStoryId ||
+              row.allocations.find((allocation) => allocation.parentUserStoryId)
+                ?.parentUserStoryId ||
+              "";
+            return userStoryId ? (
+              <a
+                className="user-story-id linked devops-user-story-link"
+                href={`https://educationbi.visualstudio.com/Skilling%20for%20Recovery/_workitems/edit/${userStoryId}`}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open User Story ${userStoryId} in Azure DevOps`}
+              >
+                US: {userStoryId}
+              </a>
+            ) : (
+              <span className="user-story-id missing">US: Not linked</span>
+            );
+          })()}
+        </small>
+        {row.needsMapping && (
+          <span className="mapping-chip">Needs Mapping</span>
+        )}
+      </td>
+      {matrixSprints.map((sprintId) => {
+        const sprintAllocs = row.allocations.filter(
+          (a) => (a.sprint || "Unscheduled") === sprintId,
+        );
+        return (
+          <td
+            className="allocation-sprint-cell"
+            key={`${row.key}-${sprintId}`}
+          >
+            {sprintAllocs.length ? (
+              sprintAllocs.map((a) => (
+                <button
+                  type="button"
+                  className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""} ${a.stageComment ? "has-comment" : ""}`}
+                  key={a.id}
+                  aria-label={
+                    a.stageComment
+                      ? `${a.owner || "Unassigned"}, ${a.stage}, ${Number(a.days || 0)} days. Comment: ${a.stageComment}`
+                      : undefined
+                  }
+                  onMouseEnter={(event) => showCommentTooltip(event, a)}
+                  onMouseLeave={() => setCapacityTooltip(null)}
+                  onFocus={(event) => showCommentTooltip(event, a)}
+                  onBlur={() => setCapacityTooltip(null)}
+                  onClick={() =>
+                    setEditingAllocation({
+                      id: String(a.id).includes("::")
+                        ? String(a.id).split("::")[0]
+                        : a.id,
+                    })
+                  }
+                >
+                  <span>
+                    {a.owner || "Unassigned"} / {a.stage} /{" "}
+                    {Number(a.days || 0)}d
+                  </span>
+                  <small>
+                    {a.isStageComplete ? "Expected Complete" : "Planned"}
+                    {a.featureIds?.length > 1 ? " / shared allocation" : ""}
+                  </small>
+                  {a.stageComment && (
+                    <small className="allocation-comment-indicator">
+                      Comment
+                    </small>
+                  )}
+                </button>
+              ))
+            ) : (
+              <span className="allocation-empty">-</span>
+            )}
+          </td>
+        );
+      })}
+    </tr>
+  );
+
   const renderAllocationMatrixEditor = () => (
     <div className="panel allocation-matrix-panel">
-      <div className="panel-top">
+      <div className="panel-top allocation-panel-heading">
         <div>
-          <h3>Planning Allocations</h3>
+          <div className="allocation-title-row">
+            <h3>Planning Allocations</h3>
+            <div
+              className="allocation-view-toggle"
+              role="group"
+              aria-label="View planning allocations by"
+            >
+              <button
+                type="button"
+                className={allocationMatrixView === "feature" ? "active" : ""}
+                onClick={() => setAllocationMatrixView("feature")}
+              >
+                Features
+              </button>
+              <button
+                type="button"
+                className={allocationMatrixView === "workspace" ? "active" : ""}
+                onClick={() => setAllocationMatrixView("workspace")}
+              >
+                Workspaces
+              </button>
+            </div>
+          </div>
           <p className="muted">
-            Switch between feature and workspace views. Filters only show
-            values available in the current planning selection.
+            Feature view shows individual work. Workspace view groups those
+            features so you can see the full breakdown.
           </p>
         </div>
-        <div className="toolbar-left">
+        <span className="pill-status neutral">
+          {sprintWorkspaceCount} workspace
+          {sprintWorkspaceCount === 1 ? "" : "s"} /{" "}
+          {sprintGoalCount} goal{sprintGoalCount === 1 ? "" : "s"} /{" "}
+          {filteredAllocations.length} allocation
+          {filteredAllocations.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="allocation-filter-bar">
+        <div className="allocation-filter-primary">
           <label className="linked-filter">
             Quarter
             <select value={quarter} onChange={(e) => setQuarter(e.target.value)}>
@@ -5557,6 +5702,8 @@ function DeliveryPlan({
             onChange={setAllocationOwnerFilters}
             allLabel="All Owners"
           />
+        </div>
+        <div className="allocation-filter-secondary">
           <select
             value={planWorkspaceFilter}
             onChange={(e) => setPlanWorkspaceFilter(e.target.value)}
@@ -5581,29 +5728,6 @@ function DeliveryPlan({
               </option>
             ))}
           </select>
-          <div className="allocation-view-toggle" role="group" aria-label="View planning allocations by">
-            <button
-              type="button"
-              className={allocationMatrixView === "feature" ? "active" : ""}
-              onClick={() => setAllocationMatrixView("feature")}
-            >
-              Features
-            </button>
-            <button
-              type="button"
-              className={allocationMatrixView === "workspace" ? "active" : ""}
-              onClick={() => setAllocationMatrixView("workspace")}
-            >
-              Workspaces
-            </button>
-          </div>
-          <span className="pill-status neutral">
-            {sprintWorkspaceCount} workspace
-            {sprintWorkspaceCount === 1 ? "" : "s"} /{" "}
-            {sprintGoalCount} goal{sprintGoalCount === 1 ? "" : "s"} /{" "}
-            {filteredAllocations.length} allocation
-            {filteredAllocations.length === 1 ? "" : "s"}
-          </span>
         </div>
       </div>
       <div
@@ -5621,7 +5745,7 @@ function DeliveryPlan({
             <tr>
               <th>
                 {allocationMatrixView === "workspace"
-                  ? "Workspace / Group"
+                  ? "Workspace / Feature"
                   : "Feature / Group"}
               </th>
               {matrixSprints.map((s) => {
@@ -5642,199 +5766,39 @@ function DeliveryPlan({
           </thead>
           <tbody>
             {allocationMatrixView === "workspace"
-              ? workspaceMatrixRows.map((row) => (
-                  <tr key={row.key}>
-                    <td className="allocation-feature-cell allocation-workspace-cell">
-                      <button
-                        type="button"
-                        className="allocation-feature-link"
-                        onClick={() => {
-                          setPlanWorkspaceFilter(row.workspace);
-                          setAllocationMatrixView("feature");
-                        }}
-                        title="Show features in this workspace"
-                      >
-                        {row.workspace}
-                      </button>
-                      <small className="allocation-feature-summary">
-                        <span>
-                          {row.featureCount} feature
-                          {row.featureCount === 1 ? "" : "s"} / {row.goalCount} goal
-                          {row.goalCount === 1 ? "" : "s"} / {row.allocations.length} allocation
-                          {row.allocations.length === 1 ? "" : "s"} / {row.days} day
-                          {row.days === 1 ? "" : "s"}
-                        </span>
-                      </small>
-                    </td>
-                    {matrixSprints.map((sprintId) => {
-                      const sprintAllocs = row.allocations.filter(
-                        (allocation) =>
-                          (allocation.sprint || "Unscheduled") === sprintId,
-                      );
-                      const featureKeys = new Set(
-                        sprintAllocs.map(
-                          (allocation) =>
-                            allocation.visibleFeatureName ||
-                            allocationDisplayName(allocation),
-                        ),
-                      );
-                      const goalKeys = new Set(
-                        sprintAllocs
-                          .filter((allocation) => allocation.isStageComplete)
-                          .map(
-                            (allocation) =>
-                              allocation.visibleFeatureName ||
-                              allocationDisplayName(allocation),
-                          ),
-                      );
-                      const days = sprintAllocs.reduce(
-                        (sum, allocation) =>
-                          sum + Number(allocation.days || 0),
-                        0,
-                      );
-                      return (
-                        <td
-                          className="allocation-sprint-cell"
-                          key={row.key + "-" + sprintId}
-                        >
-                          {sprintAllocs.length ? (
-                            <button
-                              type="button"
-                              className="workspace-summary-chip"
-                              onClick={() => {
-                                setPlanWorkspaceFilter(row.workspace);
-                                setAllocationMatrixView("feature");
-                              }}
-                              title="Show features in this workspace"
-                            >
-                              <span>
-                                {featureKeys.size} feature
-                                {featureKeys.size === 1 ? "" : "s"} /{" "}
-                                {goalKeys.size} goal
-                                {goalKeys.size === 1 ? "" : "s"}
-                              </span>
-                              <small>
-                                {sprintAllocs.length} allocation
-                                {sprintAllocs.length === 1 ? "" : "s"} / {days}d
-                              </small>
-                            </button>
-                          ) : (
-                            <span className="allocation-empty">-</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))
-              : allocationMatrixRows.map((row) => (
-              <tr key={row.key}>
-                <td className="allocation-feature-cell">
-                  {featureForAllocationMatrixRow(row) ? (
-                    <button
-                      type="button"
-                      className="allocation-feature-link"
-                      onClick={() =>
-                        openPlanFeature(featureForAllocationMatrixRow(row))
-                      }
-                      title="Open feature planning"
-                    >
-                      {row.item}
-                    </button>
-                  ) : (
-                    <b>{row.item}</b>
-                  )}
-                  <small>{row.workspace}</small>
-                  <small className="allocation-feature-summary">
-                    <span>
-                      {row.allocations.length} allocation
-                      {row.allocations.length === 1 ? "" : "s"} / {row.days} day
-                      {row.days === 1 ? "" : "s"}
-                    </span>
-                    {(() => {
-                      const feature = featureForAllocationMatrixRow(row);
-                      const userStoryId =
-                        feature?.parentUserStoryId ||
-                        row.allocations.find((allocation) => allocation.parentUserStoryId)
-                          ?.parentUserStoryId ||
-                        "";
-                      return userStoryId ? (
-                        <a
-                          className="user-story-id linked devops-user-story-link"
-                          href={`https://educationbi.visualstudio.com/Skilling%20for%20Recovery/_workitems/edit/${userStoryId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          title={`Open User Story ${userStoryId} in Azure DevOps`}
-                        >
-                          US: {userStoryId}
-                        </a>
-                      ) : (
-                        <span className="user-story-id missing">
-                          US: Not linked
-                        </span>
-                      );
-                    })()}
-                  </small>
-                  {row.needsMapping && (
-                    <span className="mapping-chip">Needs Mapping</span>
-                  )}
-                </td>
-                {matrixSprints.map((sprintId) => {
-                  const sprintAllocs = row.allocations.filter(
-                    (a) => (a.sprint || "Unscheduled") === sprintId,
-                  );
-                  return (
-                    <td
-                      className="allocation-sprint-cell"
-                      key={`${row.key}-${sprintId}`}
-                    >
-                      {sprintAllocs.length ? (
-                        sprintAllocs.map((a) => (
-                          <button
-                            type="button"
-                            className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""} ${a.stageComment ? "has-comment" : ""}`}
-                            key={a.id}
-                            aria-label={
-                              a.stageComment
-                                ? `${a.owner || "Unassigned"}, ${a.stage}, ${Number(a.days || 0)} days. Comment: ${a.stageComment}`
-                                : undefined
-                            }
-                            onMouseEnter={(event) => showCommentTooltip(event, a)}
-                            onMouseLeave={() => setCapacityTooltip(null)}
-                            onFocus={(event) => showCommentTooltip(event, a)}
-                            onBlur={() => setCapacityTooltip(null)}
-                            onClick={() =>
-                              setEditingAllocation({
-                                id: String(a.id).includes("::") ? String(a.id).split("::")[0] : a.id,
-                              })
-                            }
-                          >
-                            <span>
-                              {a.owner || "Unassigned"} / {a.stage} /{" "}
-                              {Number(a.days || 0)}d
-                            </span>
+              ? workspaceMatrixRows.map((group) => (
+                  <React.Fragment key={group.key}>
+                    <tr className="allocation-workspace-group-row">
+                      <td colSpan={matrixSprints.length + 1}>
+                        <div className="allocation-workspace-group-heading">
+                          <div>
+                            <strong>{group.workspace}</strong>
                             <small>
-                              {a.isStageComplete
-                                ? "Expected Complete"
-                                : "Planned"}
-                              {a.featureIds?.length > 1
-                                ? " / shared allocation"
-                                : ""}
+                              {group.featureCount} feature
+                              {group.featureCount === 1 ? "" : "s"} ·{" "}
+                              {group.goalCount} goal
+                              {group.goalCount === 1 ? "" : "s"} ·{" "}
+                              {group.days} day{group.days === 1 ? "" : "s"}
                             </small>
-                            {a.stageComment && (
-                              <small className="allocation-comment-indicator">
-                                Comment
-                              </small>
-                            )}
-                          </button>
-                        ))
-                      ) : (
-                        <span className="allocation-empty">-</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                          </div>
+                          <span>
+                            {group.allocations.length} allocation
+                            {group.allocations.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {group.features.map((row) =>
+                      renderAllocationFeatureRow(row, {
+                        nested: true,
+                        showWorkspace: false,
+                      }),
+                    )}
+                  </React.Fragment>
+                ))
+              : allocationMatrixRows.map((row) =>
+                  renderAllocationFeatureRow(row),
+                )}
           </tbody>
           </table>
           {!(

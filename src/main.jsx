@@ -4932,7 +4932,7 @@ function DeliveryPlan({
   );
   const workspaceMatrixRows = Object.values(
     filteredAllocations.reduce((groups, allocation) => {
-      const workspace = reviewAllocationWorkspace(allocation);
+      const workspace = allocationWorkspace(allocation);
       groups[workspace] ||
         (groups[workspace] = {
           key: workspace,
@@ -4969,7 +4969,7 @@ function DeliveryPlan({
     })
     .sort((a, b) => a.workspace.localeCompare(b.workspace));
   const sprintWorkspaceCount = new Set(
-    filteredAllocations.map((allocation) => reviewAllocationWorkspace(allocation)),
+    filteredAllocations.map((allocation) => allocationWorkspace(allocation)),
   ).size;
   const sprintGoalCount = allocationMatrixRows.filter((row) =>
     row.allocations.some((allocation) => allocation.isStageComplete),

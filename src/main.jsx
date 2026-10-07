@@ -7220,151 +7220,276 @@ function SprintReview({
   features,
   prodSupportStories,
 }) {
-  const sprintOptions = useMemo(
-    () => [
-      "ALL",
-      ...Array.from(
-        new Set(
-          [...customSprints, ...allocations.map((a) => a.sprint)]
-            .map(normaliseSprintName)
-            .filter(Boolean),
-        ),
-      ).sort(),
-    ],
-    [allocations, customSprints],
-  );
-  const [sprint, setSprint] = useState("ALL");
   const featureById = useMemo(
     () =>
       new Map(
         [...features, ...prodSupportStories.map(prodSupportStoryFeature)].map(
-          (f) => [f.id, f],
+          (feature) => [feature.id, feature],
         ),
       ),
     [features, prodSupportStories],
   );
-  const rows = useMemo(
+
+  const sprintOptions = useMemo(
     () =>
-      allocations
-        .flatMap((a) => {
-          const ids = allocationFeatureIds(a);
-          const visible =
-            ids.length > 1
-              ? ids
-                  .map((featureId) => ({
-                    featureId,
-                    featureName: featureById.get(featureId)?.feature_name,
-                  }))
-                  .filter((row) => row.featureName)
-              : [
-                  {
-                    featureId: ids[0] || "",
-                    featureName:
-                      a.featureName && a.planningGroup
-                        ? a.featureName
-                        : a.actualFeatureName ||
-                          a.featureName ||
-                          a.planningGroup ||
-                          a.workspaceName ||
-                          "Planning item",
-                  },
-                ];
-          return visible.map((row) => {
-          const stageText = a.stage || a.sourceStage || "";
-          return {
-              sprint: a.sprint || "Unscheduled",
-              feature: row.featureName,
-              stage: stageText,
-            keyGoal: /goal/i.test(`${a.sourceStage || ""} ${a.stageComment || ""}`),
-              achieved: allocationFeatureComplete(a, row.featureId),
-              sourceAllocationId: a.id,
-            };
-          });
-        })
-        .filter(
-          (a) => sprint === "ALL" || normaliseSprintName(a.sprint) === sprint,
-        )
-        .sort(
-          (a, b) =>
-            String(a.sprint).localeCompare(String(b.sprint)) ||
-            a.feature.localeCompare(b.feature) ||
-            a.stage.localeCompare(b.stage),
+      Array.from(
+        new Set(
+          allocations
+            .map((allocation) => normaliseSprintName(allocation.sprint))
+            .filter(Boolean),
         ),
-    [allocations, sprint, featureById],
+      ).sort(),
+    [allocations],
   );
-  function exportSprintReviewCsv() {
-    const csv = [
-      ["Sprint", "Feature / Story", "Stage", "Key Goal", "Achieved"].join(","),
-      ...rows.map((r) =>
-        [
-          r.sprint,
-          r.feature,
-          r.stage,
-          r.keyGoal ? "TRUE" : "",
-          r.achieved ? "TRUE" : "",
-        ]
-          .map(csvEscape)
-          .join(","),
-      ),
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "sprint-review.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const [sprint, setSprint] = useState("");
+
+  useEffect(() => {
+    if (!sprintOptions.length) {
+      if (sprint) setSprint("");
+      return;
+    }
+    if (!sprintOptions.includes(sprint)) {
+      setSprint(sprintOptions[0]);
+    }
+  }, [sprint, sprintOptions.join("|")]);
+
+  const reviewRows = useMemo(() => {
+    if (!sprint) return [];
+
+    return allocations
+      .filter(
+        (allocation) =>
+          normaliseSprintName(allocation.sprint) === normaliseSprintName(sprint),
+      )
+      .flatMap((allocation) => {
+        const linkedIds = allocationFeatureIds(allocation);
+        const visibleItems =
+          linkedIds.length > 1
+            ? linkedIds
+                .map((featureId) => ({
+                  featureId,
+                  featureName: featureById.get(featureId)?.feature_name || "",
+                  workspace:
+                    featureById.get(featureId)?.workspace ||
+                    allocationWorkspace(allocation),
+                }))
+                .filter((item) => item.featureName)
+            : [
+                {
+                  featureId: linkedIds[0] || "",
+                  featureName:
+                    featureById.get(linkedIds[0])?.feature_name ||
+                    allocation.visibleFeatureName ||
+                    allocation.actualFeatureName ||
+                    allocation.featureName ||
+                    allocation.planningGroup ||
+                    allocation.workspaceName ||
+                    "Planning item",
+                  workspace:
+                    featureById.get(linkedIds[0])?.workspace ||
+                    allocationWorkspace(allocation),
+                },
+              ];
+
+        return visibleItems.map((item) => ({
+          key: `${normaliseWorkspaceName(item.workspace || "Unassigned")}||${item.featureId || matchKey(item.featureName)}`,
+          featureId: item.featureId,
+          featureName: item.featureName,
+          workspace: normaliseWorkspaceName(item.workspace || "Unassigned"),
+          owner: allocation.owner || "Unassigned",
+          stage: normalisePlanStage(allocation.stage || allocation.sourceStage || "") ||
+            allocation.stage ||
+            allocation.sourceStage ||
+            "Not set",
+          isGoal: Boolean(allocation.isStageComplete),
+        }));
+      });
+  }, [allocations, featureById, sprint]);
+
+  const workspaceRows = useMemo(() => {
+    const groups = new Map();
+
+    reviewRows.forEach((row) => {
+      if (!groups.has(row.workspace)) {
+        groups.set(row.workspace, {
+          workspace: row.workspace,
+          rows: [],
+          people: new Set(),
+          stages: new Set(),
+          goalMap: new Map(),
+          ownerGoals: new Map(),
+        });
+      }
+      const group = groups.get(row.workspace);
+      group.rows.push(row);
+      group.people.add(row.owner);
+      if (row.stage) group.stages.add(row.stage);
+
+      if (row.isGoal) {
+        if (!group.goalMap.has(row.key)) {
+          group.goalMap.set(row.key, {
+            key: row.key,
+            featureName: row.featureName,
+            owners: new Set(),
+            stages: new Set(),
+          });
+        }
+        const goal = group.goalMap.get(row.key);
+        goal.owners.add(row.owner);
+        if (row.stage) goal.stages.add(row.stage);
+
+        if (!group.ownerGoals.has(row.owner)) {
+          group.ownerGoals.set(row.owner, new Set());
+        }
+        group.ownerGoals.get(row.owner).add(row.key);
+      }
+    });
+
+    return Array.from(groups.values())
+      .map((group) => ({
+        workspace: group.workspace,
+        people: Array.from(group.people).sort(),
+        stages: Array.from(group.stages).sort(
+          (a, b) => stageSortIndex(a) - stageSortIndex(b) || a.localeCompare(b),
+        ),
+        goals: Array.from(group.goalMap.values())
+          .map((goal) => ({
+            ...goal,
+            owners: Array.from(goal.owners).sort(),
+            stages: Array.from(goal.stages).sort(
+              (a, b) =>
+                stageSortIndex(a) - stageSortIndex(b) || a.localeCompare(b),
+            ),
+          }))
+          .sort((a, b) => a.featureName.localeCompare(b.featureName)),
+        ownerGoals: Array.from(group.ownerGoals.entries())
+          .map(([owner, goalKeys]) => ({
+            owner,
+            count: goalKeys.size,
+          }))
+          .sort((a, b) => b.count - a.count || a.owner.localeCompare(b.owner)),
+      }))
+      .sort((a, b) => a.workspace.localeCompare(b.workspace));
+  }, [reviewRows]);
+
+  const goalCount = useMemo(
+    () =>
+      new Set(
+        reviewRows.filter((row) => row.isGoal).map((row) => row.key),
+      ).size,
+    [reviewRows],
+  );
+
   return (
-    <div className="dashboard">
-      <div className="dash-head">
+    <div className="dashboard sprint-review-dashboard">
+      <div className="dash-head sprint-review-head">
         <div>
           <div className="eyebrow">Sprint Review</div>
-          <h1>Sprint review table</h1>
+          <h1>Workspace goals</h1>
+          <p className="muted">
+            Screenshot-ready view of the workspaces, people and sprint goals.
+          </p>
         </div>
-        <div className="toolbar-left">
-          <select value={sprint} onChange={(e) => setSprint(e.target.value)}>
-            {sprintOptions.map((s) => (
-              <option key={s} value={s}>
-                {s === "ALL" ? "All Sprints" : s}
-              </option>
-            ))}
-          </select>
-          <button onClick={exportSprintReviewCsv}>Export Review CSV</button>
+        <div className="sprint-review-controls">
+          <label>
+            Sprint
+            <select value={sprint} onChange={(event) => setSprint(event.target.value)}>
+              {sprintOptions.map((sprintId) => (
+                <option key={sprintId} value={sprintId}>
+                  {sprintId}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </div>
-      <div className="panel sprint-review-panel">
-        <table className="compact-table sprint-review-table">
-          <thead>
-            <tr>
-              <th>Feature / Story</th>
-              <th>Stage</th>
-              <th>Key Goal</th>
-              <th>Achieved</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length ? (
-              rows.map((row, idx) => (
-                <tr key={`${row.sprint}-${idx}-${row.feature}-${row.stage}`}>
-                  <td>
-                    {row.feature}
-                    <small>{row.sprint}</small>
-                  </td>
-                  <td className={row.keyGoal ? "review-goal-stage" : ""}>
-                    {row.stage}
-                  </td>
-                  <td>{row.keyGoal ? "TRUE" : ""}</td>
-                  <td>{row.achieved ? "TRUE" : ""}</td>
-                </tr>
-              ))
-            ) : (
+
+      <div className="sprint-review-summary">
+        <div>
+          <span>Selected sprint</span>
+          <strong>{sprint || "No sprint"}</strong>
+        </div>
+        <div>
+          <span>Workspaces</span>
+          <strong>{workspaceRows.length}</strong>
+        </div>
+        <div>
+          <span>Goals</span>
+          <strong>{goalCount}</strong>
+        </div>
+      </div>
+
+      <div className="panel sprint-review-workspace-panel">
+        <div className="sprint-review-table-wrap">
+          <table className="compact-table sprint-review-workspace-table">
+            <thead>
               <tr>
-                <td colSpan="4">No planning allocations yet.</td>
+                <th>Workspace</th>
+                <th>People</th>
+                <th>Goals</th>
+                <th>Stage</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {workspaceRows.length ? (
+                workspaceRows.map((row) => (
+                  <tr key={row.workspace}>
+                    <td className="sprint-review-workspace-name">
+                      <strong>{row.workspace}</strong>
+                      <small>
+                        {row.goals.length} goal{row.goals.length === 1 ? "" : "s"}
+                      </small>
+                    </td>
+                    <td>
+                      <div className="sprint-review-people">
+                        {row.people.map((person) => {
+                          const goalTotal =
+                            row.ownerGoals.find((item) => item.owner === person)
+                              ?.count || 0;
+                          return (
+                            <span key={person}>
+                              {person}
+                              {goalTotal > 0 && (
+                                <b>
+                                  {goalTotal} goal{goalTotal === 1 ? "" : "s"}
+                                </b>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    <td>
+                      {row.goals.length ? (
+                        <div className="sprint-review-goals">
+                          {row.goals.map((goal) => (
+                            <div className="sprint-review-goal" key={goal.key}>
+                              <b>{goal.featureName}</b>
+                              <small>{goal.owners.join(", ")}</small>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="sprint-review-no-goal">No sprint goal</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="sprint-review-stages">
+                        {row.stages.map((stage) => (
+                          <span key={stage}>{stage}</span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4">No planning allocations for this sprint.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

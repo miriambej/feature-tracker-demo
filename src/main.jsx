@@ -7375,6 +7375,17 @@ function SprintReview({
       ).sort(),
     [allocations],
   );
+  const currentSprint = useMemo(() => {
+    const today = TODAY.getTime();
+    const datedSprint = Q2_SPRINT_DATES.find((row) => {
+      const start = new Date(`${row.startDate}T00:00:00`).getTime();
+      const end = new Date(`${row.endDate}T23:59:59`).getTime();
+      return today >= start && today <= end;
+    })?.sprint;
+    return datedSprint && sprintOptions.includes(datedSprint)
+      ? datedSprint
+      : sprintOptions[0] || "";
+  }, [sprintOptions.join("|")]);
   const [sprint, setSprint] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
 
@@ -7383,10 +7394,10 @@ function SprintReview({
       if (sprint) setSprint("");
       return;
     }
-    if (!sprintOptions.includes(sprint)) {
-      setSprint(sprintOptions[0]);
+    if (!sprint || !sprintOptions.includes(sprint)) {
+      setSprint(currentSprint);
     }
-  }, [sprint, sprintOptions.join("|")]);
+  }, [sprint, currentSprint, sprintOptions.join("|")]);
 
   const reviewRows = useMemo(() => {
     if (!sprint) return [];

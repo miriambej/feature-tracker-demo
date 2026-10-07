@@ -7389,15 +7389,15 @@ function SprintReview({
 
   return (
     <div className="dashboard sprint-review-dashboard">
-      <div className="dash-head sprint-review-head">
+      <div className="sprint-review-compact-head">
         <div>
           <div className="eyebrow">Sprint Review</div>
-          <h1>Workspace goals</h1>
-          <p className="muted">
-            Screenshot-ready view of the workspaces, people and sprint goals.
-          </p>
+          <h2>Current sprint commitments</h2>
         </div>
-        <div className="sprint-review-controls">
+        <div className="sprint-review-compact-actions">
+          <span className="sprint-review-total">
+            <b>{workspaceRows.length}</b> workspaces · <b>{goalCount}</b> goals
+          </span>
           <label>
             Sprint
             <select value={sprint} onChange={(event) => setSprint(event.target.value)}>
@@ -7411,29 +7411,13 @@ function SprintReview({
         </div>
       </div>
 
-      <div className="sprint-review-summary">
-        <div>
-          <span>Selected sprint</span>
-          <strong>{sprint || "No sprint"}</strong>
-        </div>
-        <div>
-          <span>Workspaces</span>
-          <strong>{workspaceRows.length}</strong>
-        </div>
-        <div>
-          <span>Goals</span>
-          <strong>{goalCount}</strong>
-        </div>
-      </div>
-
-      <div className="panel sprint-review-workspace-panel">
+      <div className="panel sprint-review-workspace-panel sprint-review-compact-panel">
         <div className="sprint-review-table-wrap">
-          <table className="compact-table sprint-review-workspace-table">
+          <table className="compact-table sprint-review-workspace-table sprint-review-compact-table">
             <thead>
               <tr>
                 <th>Workspace</th>
-                <th>People</th>
-                <th>Goals</th>
+                <th>People / Goals</th>
                 <th>Stage</th>
               </tr>
             </thead>
@@ -7443,22 +7427,24 @@ function SprintReview({
                   <tr key={row.workspace}>
                     <td className="sprint-review-workspace-name">
                       <strong>{row.workspace}</strong>
-                      <small>
-                        {row.goals.length} goal{row.goals.length === 1 ? "" : "s"}
-                      </small>
+                      {row.goals.length > 0 && (
+                        <small title={row.goals.map((goal) => goal.featureName).join(" · ")}>
+                          {row.goals.map((goal) => goal.featureName).join(" · ")}
+                        </small>
+                      )}
                     </td>
                     <td>
-                      <div className="sprint-review-people">
+                      <div className="sprint-review-people sprint-review-people-compact">
                         {row.people.map((person) => {
                           const goalTotal =
                             row.ownerGoals.find((item) => item.owner === person)
                               ?.count || 0;
                           return (
                             <span key={person}>
-                              {person}
+                              <span>{person}</span>
                               {goalTotal > 0 && (
-                                <b>
-                                  {goalTotal} goal{goalTotal === 1 ? "" : "s"}
+                                <b title={`${person}: ${goalTotal} sprint goal${goalTotal === 1 ? "" : "s"}`}>
+                                  {goalTotal}
                                 </b>
                               )}
                             </span>
@@ -7467,21 +7453,7 @@ function SprintReview({
                       </div>
                     </td>
                     <td>
-                      {row.goals.length ? (
-                        <div className="sprint-review-goals">
-                          {row.goals.map((goal) => (
-                            <div className="sprint-review-goal" key={goal.key}>
-                              <b>{goal.featureName}</b>
-                              <small>{goal.owners.join(", ")}</small>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="sprint-review-no-goal">No sprint goal</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="sprint-review-stages">
+                      <div className="sprint-review-stages sprint-review-stages-compact">
                         {row.stages.map((stage) => (
                           <span key={stage}>{stage}</span>
                         ))}
@@ -7491,7 +7463,7 @@ function SprintReview({
                 ))
               ) : (
                 <tr>
-                  <td colSpan="4">No planning allocations for this sprint.</td>
+                  <td colSpan="3">No planning allocations for this sprint.</td>
                 </tr>
               )}
             </tbody>
@@ -7499,8 +7471,7 @@ function SprintReview({
         </div>
       </div>
     </div>
-  );
-}
+  );}
 
 function App() {
   const [features, setFeatures] = useState([]);

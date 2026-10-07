@@ -251,3 +251,27 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .sprint-review-compact-table th:nth-child(2){width:24%}
 .sprint-review-compact-table th:nth-child(3){width:20%}
 .sprint-review-person-cell{width:24%;white-space:nowrap}
+
+
+/* Sprint Review copy control */
+.sprint-review-copy-button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:30px;
+  height:30px;
+  padding:0;
+  border-radius:8px;
+  font-size:17px;
+  line-height:1;
+}
+.sprint-review-copy-status{
+  align-self:center;
+  font-size:10px;
+  opacity:.72;
+  white-space:nowrap;
+}
+.sprint-review-capture{
+  width:100%;
+  max-width:560px;
+}

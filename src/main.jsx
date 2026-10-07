@@ -2908,6 +2908,7 @@ function DeliveryPlan({
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [planWorkspaceFilter, setPlanWorkspaceFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
+  const [allocationMatrixView, setAllocationMatrixView] = useState("feature");
   const [allocationOwnerFilters, setAllocationOwnerFilters] = useState([]);
   const [allocationSprintFilters, setAllocationSprintFilters] = useState([]);
   const [warning, setWarning] = useState("");
@@ -4839,15 +4840,38 @@ function DeliveryPlan({
       a.planningGroup || a.workspaceName || a.featureName,
     );
   };
-  const filteredAllocations = visibleAllocationRows
+  const allocationFacetBase = visibleAllocationRows.filter(
+    (a) =>
+      (!a.sprint || String(a.sprint).startsWith(quarter)) &&
+      (allocationSprintFilters.length === 0 ||
+        allocationSprintFilters.includes(a.sprint)) &&
+      (ownerFilter === "ALL" || a.owner === ownerFilter) &&
+      (allocationOwnerFilters.length === 0 ||
+        allocationOwnerFilters.includes(a.owner)),
+  );
+  const availableWorkspaceFilters = Array.from(
+    new Set(
+      allocationFacetBase
+        .filter((a) => stageFilter === "ALL" || a.stage === stageFilter)
+        .map((a) => allocationWorkspace(a))
+        .filter(Boolean),
+    ),
+  ).sort();
+  const availableStageFilters = Array.from(
+    new Set(
+      allocationFacetBase
+        .filter(
+          (a) =>
+            planWorkspaceFilter === "ALL" ||
+            allocationWorkspace(a) === planWorkspaceFilter,
+        )
+        .map((a) => a.stage)
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => stageSortIndex(a) - stageSortIndex(b) || a.localeCompare(b));
+  const filteredAllocations = allocationFacetBase
     .filter(
       (a) =>
-        (!a.sprint || String(a.sprint).startsWith(quarter)) &&
-        (allocationSprintFilters.length === 0 ||
-          allocationSprintFilters.includes(a.sprint)) &&
-        (ownerFilter === "ALL" || a.owner === ownerFilter) &&
-        (allocationOwnerFilters.length === 0 ||
-          allocationOwnerFilters.includes(a.owner)) &&
         (planWorkspaceFilter === "ALL" ||
           allocationWorkspace(a) === planWorkspaceFilter) &&
         (stageFilter === "ALL" || a.stage === stageFilter),
@@ -4857,6 +4881,20 @@ function DeliveryPlan({
         String(a.sprint).localeCompare(String(b.sprint)) ||
         stageSortIndex(a.stage) - stageSortIndex(b.stage),
     );
+  useEffect(() => {
+    if (
+      stageFilter !== "ALL" &&
+      !availableStageFilters.includes(stageFilter)
+    )
+      setStageFilter("ALL");
+  }, [stageFilter, availableStageFilters.join("|")]);
+  useEffect(() => {
+    if (
+      planWorkspaceFilter !== "ALL" &&
+      !availableWorkspaceFilters.includes(planWorkspaceFilter)
+    )
+      setPlanWorkspaceFilter("ALL");
+  }, [planWorkspaceFilter, availableWorkspaceFilters.join("|")]);
   const matrixSprints = Array.from(
     new Set(
       [
@@ -4892,6 +4930,41 @@ function DeliveryPlan({
     (a, b) =>
       a.item.localeCompare(b.item) || a.workspace.localeCompare(b.workspace),
   );
+  const workspaceMatrixRows = Object.values(
+    filteredAllocations.reduce((groups, allocation) => {
+      const workspace = allocationWorkspace(allocation);
+      groups[workspace] ||
+        (groups[workspace] = {
+          key: workspace,
+          workspace,
+          allocations: [],
+          days: 0,
+        });
+      groups[workspace].allocations.push(allocation);
+      groups[workspace].days += Number(allocation.days || 0);
+      return groups;
+    }, {}),
+  )
+    .map((row) => {
+      const featureKeys = new Set(
+        row.allocations.map((allocation) =>
+          (allocation.visibleFeatureName || allocationDisplayName(allocation)) + "||" + row.workspace,
+        ),
+      );
+      const goalKeys = new Set(
+        row.allocations
+          .filter((allocation) => allocation.isStageComplete)
+          .map((allocation) =>
+            (allocation.visibleFeatureName || allocationDisplayName(allocation)) + "||" + row.workspace,
+          ),
+      );
+      return {
+        ...row,
+        featureCount: featureKeys.size,
+        goalCount: goalKeys.size,
+      };
+    })
+    .sort((a, b) => a.workspace.localeCompare(b.workspace));
   const sprintWorkspaceCount = new Set(
     filteredAllocations.map((allocation) => allocationWorkspace(allocation)),
   ).size;
@@ -5457,8 +5530,8 @@ function DeliveryPlan({
         <div>
           <h3>Planning Allocations</h3>
           <p className="muted">
-            Spreadsheet-style view grouped by feature across all imported
-            sprints. Click a chip to edit the allocation.
+            Switch between feature and workspace views. Filters only show
+            values available in the current planning selection.
           </p>
         </div>
         <div className="toolbar-left">
@@ -5485,14 +5558,45 @@ function DeliveryPlan({
             allLabel="All Owners"
           />
           <select
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
+            value={planWorkspaceFilter}
+            onChange={(e) => setPlanWorkspaceFilter(e.target.value)}
+            aria-label="Filter planning allocations by workspace"
           >
-            <option value="ALL">All Stages</option>
-            {STAGE_OPTIONS.map((s) => (
-              <option key={s}>{s}</option>
+            <option value="ALL">All Workspaces</option>
+            {availableWorkspaceFilters.map((workspace) => (
+              <option key={workspace} value={workspace}>
+                {workspace}
+              </option>
             ))}
           </select>
+          <select
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            aria-label="Filter planning allocations by stage"
+          >
+            <option value="ALL">All Stages</option>
+            {availableStageFilters.map((stage) => (
+              <option key={stage} value={stage}>
+                {stage}
+              </option>
+            ))}
+          </select>
+          <div className="allocation-view-toggle" role="group" aria-label="View planning allocations by">
+            <button
+              type="button"
+              className={allocationMatrixView === "feature" ? "active" : ""}
+              onClick={() => setAllocationMatrixView("feature")}
+            >
+              Features
+            </button>
+            <button
+              type="button"
+              className={allocationMatrixView === "workspace" ? "active" : ""}
+              onClick={() => setAllocationMatrixView("workspace")}
+            >
+              Workspaces
+            </button>
+          </div>
           <span className="pill-status neutral">
             {sprintWorkspaceCount} workspace
             {sprintWorkspaceCount === 1 ? "" : "s"} /{" "}
@@ -5515,7 +5619,11 @@ function DeliveryPlan({
           </colgroup>
           <thead>
             <tr>
-              <th>Feature / Group</th>
+              <th>
+                {allocationMatrixView === "workspace"
+                  ? "Workspace / Group"
+                  : "Feature / Group"}
+              </th>
               {matrixSprints.map((s) => {
                 const dates = effectiveSprintDates.find(
                   (row) => row.sprint === normaliseSprintName(s),
@@ -5533,7 +5641,92 @@ function DeliveryPlan({
             </tr>
           </thead>
           <tbody>
-            {allocationMatrixRows.map((row) => (
+            {allocationMatrixView === "workspace"
+              ? workspaceMatrixRows.map((row) => (
+                  <tr key={row.key}>
+                    <td className="allocation-feature-cell allocation-workspace-cell">
+                      <button
+                        type="button"
+                        className="allocation-feature-link"
+                        onClick={() => {
+                          setPlanWorkspaceFilter(row.workspace);
+                          setAllocationMatrixView("feature");
+                        }}
+                        title="Show features in this workspace"
+                      >
+                        {row.workspace}
+                      </button>
+                      <small className="allocation-feature-summary">
+                        <span>
+                          {row.featureCount} feature
+                          {row.featureCount === 1 ? "" : "s"} / {row.goalCount} goal
+                          {row.goalCount === 1 ? "" : "s"} / {row.allocations.length} allocation
+                          {row.allocations.length === 1 ? "" : "s"} / {row.days} day
+                          {row.days === 1 ? "" : "s"}
+                        </span>
+                      </small>
+                    </td>
+                    {matrixSprints.map((sprintId) => {
+                      const sprintAllocs = row.allocations.filter(
+                        (allocation) =>
+                          (allocation.sprint || "Unscheduled") === sprintId,
+                      );
+                      const featureKeys = new Set(
+                        sprintAllocs.map(
+                          (allocation) =>
+                            allocation.visibleFeatureName ||
+                            allocationDisplayName(allocation),
+                        ),
+                      );
+                      const goalKeys = new Set(
+                        sprintAllocs
+                          .filter((allocation) => allocation.isStageComplete)
+                          .map(
+                            (allocation) =>
+                              allocation.visibleFeatureName ||
+                              allocationDisplayName(allocation),
+                          ),
+                      );
+                      const days = sprintAllocs.reduce(
+                        (sum, allocation) =>
+                          sum + Number(allocation.days || 0),
+                        0,
+                      );
+                      return (
+                        <td
+                          className="allocation-sprint-cell"
+                          key={row.key + "-" + sprintId}
+                        >
+                          {sprintAllocs.length ? (
+                            <button
+                              type="button"
+                              className="workspace-summary-chip"
+                              onClick={() => {
+                                setPlanWorkspaceFilter(row.workspace);
+                                setAllocationMatrixView("feature");
+                              }}
+                              title="Show features in this workspace"
+                            >
+                              <span>
+                                {featureKeys.size} feature
+                                {featureKeys.size === 1 ? "" : "s"} /{" "}
+                                {goalKeys.size} goal
+                                {goalKeys.size === 1 ? "" : "s"}
+                              </span>
+                              <small>
+                                {sprintAllocs.length} allocation
+                                {sprintAllocs.length === 1 ? "" : "s"} / {days}d
+                              </small>
+                            </button>
+                          ) : (
+                            <span className="allocation-empty">-</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              : allocationMatrixRows.map((row) => (
               <tr key={row.key}>
                 <td className="allocation-feature-cell">
                   {featureForAllocationMatrixRow(row) ? (
@@ -5644,7 +5837,11 @@ function DeliveryPlan({
             ))}
           </tbody>
           </table>
-          {!allocationMatrixRows.length && (
+          {!(
+            allocationMatrixView === "workspace"
+              ? workspaceMatrixRows.length
+              : allocationMatrixRows.length
+          ) && (
             <p className="muted">No allocations match the current filters.</p>
           )}
         </div>

@@ -110,3 +110,25 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .app.light .allocation-view-toggle button.active{background:#e8e5ff!important;color:#3d32a8!important;border-color:#c7c0ff!important}
 .app.light .workspace-summary-chip{background:#f3f0ff;border-color:#d8d2ff;color:#323130}
 .app.light .workspace-summary-chip:hover{background:#ebe7ff;border-color:#bfb6ff}
+
+
+.allocation-panel-heading{align-items:flex-start;gap:14px}
+.allocation-title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.allocation-title-row h3{margin:0}
+.allocation-filter-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:2px 0 10px}
+.allocation-filter-primary,.allocation-filter-secondary{display:flex;align-items:flex-end;gap:7px;flex-wrap:wrap}
+.allocation-filter-secondary{margin-left:auto}
+.allocation-filter-secondary select{min-width:150px}
+.allocation-workspace-group-row td{padding:0!important;position:relative;z-index:2;background:rgba(79,140,255,.08);border-top:1px solid rgba(79,140,255,.22);border-bottom:1px solid rgba(79,140,255,.18)}
+.allocation-workspace-group-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px}
+.allocation-workspace-group-heading>div{display:grid;gap:2px}
+.allocation-workspace-group-heading strong{font-size:12px}
+.allocation-workspace-group-heading small{font-size:9px}
+.allocation-workspace-group-heading>span{font-size:10px;font-weight:700;white-space:nowrap}
+.allocation-nested-feature-row .allocation-feature-cell{padding-left:20px}
+.allocation-nested-feature-name{position:relative}
+.allocation-nested-feature-name:before{content:"↳";position:absolute;left:-13px;top:0;color:#7c8aa5;font-weight:700}
+.allocation-nested-feature-row .allocation-feature-summary{margin-top:3px}
+.app.light .allocation-workspace-group-row td{background:#eef2ff;border-color:#d9def8}
+.app.light .allocation-nested-feature-name:before{color:#7a7a8a}
+@media(max-width:900px){.allocation-filter-secondary{margin-left:0}.allocation-filter-bar{align-items:stretch}.allocation-filter-primary,.allocation-filter-secondary{width:100%}}

@@ -275,3 +275,22 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
   width:100%;
   max-width:560px;
 }
+
+
+/* Final Sprint Review squeeze for slide capture */
+.sprint-review-dashboard,
+.sprint-review-compact-head,
+.sprint-review-compact-panel,
+.sprint-review-capture{
+  max-width:500px;
+}
+.sprint-review-compact-table th:nth-child(1){width:56%}
+.sprint-review-compact-table th:nth-child(2){width:18%}
+.sprint-review-compact-table th:nth-child(3){width:26%}
+.sprint-review-compact-table .sprint-review-workspace-name{
+  width:56%!important;
+}
+.sprint-review-person-cell{
+  width:18%;
+  white-space:nowrap;
+}

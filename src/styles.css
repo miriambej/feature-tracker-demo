@@ -221,3 +221,22 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .sprint-review-people-compact b{min-width:14px;height:14px;padding:0 3px;font-size:8px}
 .sprint-review-stages-compact{gap:2px}
 .sprint-review-stages-compact span{padding:1px 4px;font-size:8.5px}
+
+
+/* Sprint Review: compact Power BI-style commitments */
+.sprint-review-dashboard{max-width:560px}
+.sprint-review-compact-head{max-width:560px}
+.sprint-review-compact-panel{max-width:560px}
+.sprint-review-compact-table{min-width:0;width:100%;font-size:9.2px}
+.sprint-review-compact-table th:nth-child(1){width:54%}
+.sprint-review-compact-table th:nth-child(2){width:28%}
+.sprint-review-compact-table th:nth-child(3){width:18%}
+.sprint-review-compact-table th,
+.sprint-review-compact-table td{padding:3px 5px}
+.sprint-review-workspace-name{vertical-align:top!important;border-right:1px solid rgba(148,163,184,.18)}
+.sprint-review-workspace-name strong{font-size:9.5px!important;line-height:1.1}
+.sprint-review-person-cell{white-space:nowrap}
+.sprint-review-person-cell>span{vertical-align:middle}
+.sprint-review-goal-number{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;min-width:15px;height:15px;padding:0 3px;border-radius:999px;background:#2f5da8;color:#fff;font-size:8px;line-height:1;font-weight:700;vertical-align:middle}
+.sprint-review-stage-goal{background:#ffd91a!important;color:#5b5200!important;font-weight:600}
+.app.light .sprint-review-stage-goal{background:#ffd91a!important;color:#5b5200!important}

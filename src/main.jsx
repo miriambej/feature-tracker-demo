@@ -4892,7 +4892,9 @@ function DeliveryPlan({
     (a, b) =>
       a.item.localeCompare(b.item) || a.workspace.localeCompare(b.workspace),
   );
-  const sprintFeatureCount = allocationMatrixRows.length;
+  const sprintWorkspaceCount = new Set(
+    filteredAllocations.map((allocation) => allocationWorkspace(allocation)),
+  ).size;
   const sprintGoalCount = allocationMatrixRows.filter((row) =>
     row.allocations.some((allocation) => allocation.isStageComplete),
   ).length;
@@ -5492,7 +5494,8 @@ function DeliveryPlan({
             ))}
           </select>
           <span className="pill-status neutral">
-            {sprintFeatureCount} feature{sprintFeatureCount === 1 ? "" : "s"} /{" "}
+            {sprintWorkspaceCount} workspace
+            {sprintWorkspaceCount === 1 ? "" : "s"} /{" "}
             {sprintGoalCount} goal{sprintGoalCount === 1 ? "" : "s"} /{" "}
             {filteredAllocations.length} allocation
             {filteredAllocations.length === 1 ? "" : "s"}

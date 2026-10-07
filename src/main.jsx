@@ -4932,7 +4932,7 @@ function DeliveryPlan({
   );
   const workspaceMatrixRows = Object.values(
     filteredAllocations.reduce((groups, allocation) => {
-      const workspace = allocationWorkspace(allocation);
+      const workspace = reviewAllocationWorkspace(allocation);
       groups[workspace] ||
         (groups[workspace] = {
           key: workspace,
@@ -4969,7 +4969,7 @@ function DeliveryPlan({
     })
     .sort((a, b) => a.workspace.localeCompare(b.workspace));
   const sprintWorkspaceCount = new Set(
-    filteredAllocations.map((allocation) => allocationWorkspace(allocation)),
+    filteredAllocations.map((allocation) => reviewAllocationWorkspace(allocation)),
   ).size;
   const sprintGoalCount = allocationMatrixRows.filter((row) =>
     row.allocations.some((allocation) => allocation.isStageComplete),
@@ -7220,6 +7220,13 @@ function SprintReview({
   features,
   prodSupportStories,
 }) {
+  const reviewAllocationWorkspace = (allocation) =>
+    normaliseWorkspaceName(
+      allocation.planningGroup ||
+        allocation.workspace ||
+        allocation.workspaceName ||
+        "Unknown",
+    );
   const featureById = useMemo(
     () =>
       new Map(
@@ -7271,7 +7278,7 @@ function SprintReview({
                   featureName: featureById.get(featureId)?.feature_name || "",
                   workspace:
                     featureById.get(featureId)?.workspace ||
-                    allocationWorkspace(allocation),
+                    reviewAllocationWorkspace(allocation),
                 }))
                 .filter((item) => item.featureName)
             : [
@@ -7287,7 +7294,7 @@ function SprintReview({
                     "Planning item",
                   workspace:
                     featureById.get(linkedIds[0])?.workspace ||
-                    allocationWorkspace(allocation),
+                    reviewAllocationWorkspace(allocation),
                 },
               ];
 

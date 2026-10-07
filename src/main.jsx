@@ -7376,7 +7376,7 @@ function SprintReview({
   );
 
   async function copySprintReviewImage() {
-    const source = document.querySelector(".sprint-review-capture");
+    const source = document.querySelector(".sprint-review-compact-panel");
     if (!source) return;
     try {
       setCopyStatus("Copying…");

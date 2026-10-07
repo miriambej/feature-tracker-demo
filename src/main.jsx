@@ -7268,48 +7268,39 @@ function SprintReview({
         (allocation) =>
           normaliseSprintName(allocation.sprint) === normaliseSprintName(sprint),
       )
-      .flatMap((allocation) => {
-        const linkedIds = allocationFeatureIds(allocation);
-        const visibleItems =
-          linkedIds.length > 1
-            ? linkedIds
-                .map((featureId) => ({
-                  featureId,
-                  featureName: featureById.get(featureId)?.feature_name || "",
-                  workspace:
-                    featureById.get(featureId)?.workspace ||
-                    reviewAllocationWorkspace(allocation),
-                }))
-                .filter((item) => item.featureName)
-            : [
-                {
-                  featureId: linkedIds[0] || "",
-                  featureName:
-                    featureById.get(linkedIds[0])?.feature_name ||
-                    allocation.visibleFeatureName ||
-                    allocation.actualFeatureName ||
-                    allocation.featureName ||
-                    allocation.planningGroup ||
-                    allocation.workspaceName ||
-                    "Planning item",
-                  workspace:
-                    featureById.get(linkedIds[0])?.workspace ||
-                    reviewAllocationWorkspace(allocation),
-                },
-              ];
+      .map((allocation) => {
+        const linkedId = allocationFeatureIds(allocation)[0] || "";
+        const linkedFeature = linkedId ? featureById.get(linkedId) : null;
+        const featureName =
+          allocation.visibleFeatureName ||
+          allocation.actualFeatureName ||
+          allocation.featureName ||
+          linkedFeature?.feature_name ||
+          allocation.planningGroup ||
+          allocation.workspaceName ||
+          "Planning item";
+        const workspace =
+          normaliseWorkspaceName(
+            allocation.planningGroup ||
+              allocation.workspace ||
+              linkedFeature?.workspace ||
+              allocation.workspaceName ||
+              "Unknown",
+          );
 
-        return visibleItems.map((item) => ({
-          key: `${normaliseWorkspaceName(item.workspace || "Unassigned")}||${item.featureId || matchKey(item.featureName)}`,
-          featureId: item.featureId,
-          featureName: item.featureName,
-          workspace: normaliseWorkspaceName(item.workspace || "Unassigned"),
+        return {
+          key: `${workspace}||${matchKey(featureName)}`,
+          featureId: linkedId,
+          featureName,
+          workspace,
           owner: allocation.owner || "Unassigned",
-          stage: normalisePlanStage(allocation.stage || allocation.sourceStage || "") ||
+          stage:
+            normalisePlanStage(allocation.stage || allocation.sourceStage || "") ||
             allocation.stage ||
             allocation.sourceStage ||
             "Not set",
           isGoal: Boolean(allocation.isStageComplete),
-        }));
+        };
       });
   }, [allocations, featureById, sprint]);
 

@@ -7731,6 +7731,19 @@ function App() {
     ],
     [features],
   );
+  const executiveFeatures = useMemo(
+    () => [...features, ...prodSupportStories.map(prodSupportStoryFeature)],
+    [features, prodSupportStories],
+  );
+  const executiveWorkspaces = useMemo(
+    () => [
+      "ALL",
+      ...Array.from(
+        new Set(executiveFeatures.map((f) => f.workspace).filter(Boolean)),
+      ).sort(),
+    ],
+    [executiveFeatures],
+  );
   const owners = useMemo(
     () => [
       "ALL",
@@ -7825,7 +7838,36 @@ function App() {
     setMilestones((prev) => buildWorkspaceMilestones([f, ...features], prev));
   }
   function saveFeature(f) {
-    setFeatures((prev) => prev.map((x) => (x.id === f.id ? f : x)));
+    if (f?.isProdSupportStory) {
+      setProdSupportStories((prev) =>
+        prev.map((story) =>
+          story.id === f.localStoryId
+            ? {
+                ...story,
+                name: String(f.feature_name || "").replace(/^Prod Support\s*-\s*/i, ""),
+                workspace: f.workspace || story.workspace || PROD_SUPPORT_GROUP,
+                devOpsId: String(f.parentUserStoryId || ""),
+                notes: f.notes || story.notes || "",
+              }
+            : story,
+        ),
+      );
+      setAllocations((prev) =>
+        prev.map((allocation) =>
+          allocationHasFeature(allocation, f.id)
+            ? {
+                ...allocation,
+                planningGroup: f.workspace || allocation.planningGroup,
+                workspace: f.workspace || allocation.workspace,
+                workspaceName: f.workspace || allocation.workspaceName,
+                parentUserStoryId: String(f.parentUserStoryId || ""),
+              }
+            : allocation,
+        ),
+      );
+    } else {
+      setFeatures((prev) => prev.map((x) => (x.id === f.id ? f : x)));
+    }
     setEditing(null);
   }
   const migrationFeatures = features.filter(isMigrationFeature);
@@ -7958,14 +8000,14 @@ function App() {
       </div>
       {mode === "executive" && (
         <ExecutiveDashboard
-          features={features}
+          features={executiveFeatures}
           allocations={allocations}
           customSprints={customSprints}
           sprintDates={sprintDates}
           finalStageByFeatureId={finalStageByFeatureId}
           milestones={milestones}
           setMilestones={setMilestones}
-          workspaces={workspaces}
+          workspaces={executiveWorkspaces}
           workspaceFilter={workspaceFilter}
           setWorkspaceFilter={setWorkspaceFilter}
           selectedWorkspace={selectedWorkspace}

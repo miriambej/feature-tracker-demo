@@ -4892,6 +4892,10 @@ function DeliveryPlan({
     (a, b) =>
       a.item.localeCompare(b.item) || a.workspace.localeCompare(b.workspace),
   );
+  const sprintFeatureCount = allocationMatrixRows.length;
+  const sprintGoalCount = allocationMatrixRows.filter((row) =>
+    row.allocations.some((allocation) => allocation.isStageComplete),
+  ).length;
   const featureForAllocationMatrixRow = (row) => {
     const linkedIds = Array.from(
       new Set(
@@ -5488,6 +5492,8 @@ function DeliveryPlan({
             ))}
           </select>
           <span className="pill-status neutral">
+            {sprintFeatureCount} feature{sprintFeatureCount === 1 ? "" : "s"} /{" "}
+            {sprintGoalCount} goal{sprintGoalCount === 1 ? "" : "s"} /{" "}
             {filteredAllocations.length} allocation
             {filteredAllocations.length === 1 ? "" : "s"}
           </span>

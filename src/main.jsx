@@ -3146,8 +3146,11 @@ function DeliveryPlan({
   const standaloneAllocationsByKey = useMemo(() => {
     const map = new Map();
     allocations.forEach((a) => {
+      const hasCurrentFeature = allocationFeatureIds(a).some((featureId) =>
+        featureById.has(featureId),
+      );
       if (
-        allocationFeatureIds(a).length ||
+        hasCurrentFeature ||
         isSplitPlanningGroup(a.planningGroup || a.featureName)
       )
         return;
@@ -3157,7 +3160,7 @@ function DeliveryPlan({
       map.get(key).push(a);
     });
     return map;
-  }, [allocations]);
+  }, [allocations, featureById]);
   const standaloneKeys = Array.from(standaloneAllocationsByKey.keys());
   const planningFeatures = useMemo(
     () => [
@@ -3601,8 +3604,10 @@ function DeliveryPlan({
           allocation.featureName ||
           allocation.planningGroup ||
           allocation.workspaceName;
-        if (key !== planningKey || allocationFeatureIds(allocation).length)
-          return allocation;
+        const hasCurrentFeature = allocationFeatureIds(allocation).some(
+        (featureId) => featureById.has(featureId),
+      );
+      if (key !== planningKey || hasCurrentFeature) return allocation;
         return { ...allocation, parentUserStoryId: cleanValue };
       }),
     );

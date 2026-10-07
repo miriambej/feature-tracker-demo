@@ -7416,13 +7416,15 @@ function SprintReview({
               {workspaceRows.length ? (
                 workspaceRows.map((row) => (
                   <tr key={row.workspace}>
-                    <td className="sprint-review-workspace-name">
+                    <td
+                      className="sprint-review-workspace-name"
+                      title={
+                        row.goals.length
+                          ? row.goals.map((goal) => goal.featureName).join(" · ")
+                          : undefined
+                      }
+                    >
                       <strong>{row.workspace}</strong>
-                      {row.goals.length > 0 && (
-                        <small title={row.goals.map((goal) => goal.featureName).join(" · ")}>
-                          {row.goals.map((goal) => goal.featureName).join(" · ")}
-                        </small>
-                      )}
                     </td>
                     <td>
                       <div className="sprint-review-people sprint-review-people-compact">

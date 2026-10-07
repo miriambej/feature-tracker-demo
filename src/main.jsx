@@ -3113,14 +3113,22 @@ function DeliveryPlan({
     () => new Map(allocations.map((a) => [a.id, a])),
     [allocations],
   );
-  const allocationWorkspace = (a) =>
-    normaliseWorkspaceName(
-      a.planningGroup ||
+  const allocationWorkspace = (a) => {
+    const visibleFeatureId =
+      a.visibleFeatureId ||
+      (allocationFeatureIds(a).length === 1 ? allocationFeatureIds(a)[0] : "");
+    const linkedWorkspace = visibleFeatureId
+      ? featureById.get(visibleFeatureId)?.workspace
+      : "";
+    return normaliseWorkspaceName(
+      linkedWorkspace ||
+        a.planningGroup ||
         a.workspace ||
         a.featureName ||
         a.workspaceName ||
         "Unknown",
     );
+  };
   const allocationDisplayName = (a) =>
     a.featureName && a.planningGroup
       ? a.featureName
@@ -7867,6 +7875,22 @@ function App() {
       );
     } else {
       setFeatures((prev) => prev.map((x) => (x.id === f.id ? f : x)));
+      setAllocations((prev) =>
+        prev.map((allocation) => {
+          const linkedIds = allocationFeatureIds(allocation);
+          if (linkedIds.length !== 1 || linkedIds[0] !== f.id) return allocation;
+          return {
+            ...allocation,
+            planningGroup: f.workspace || allocation.planningGroup,
+            workspace: f.workspace || allocation.workspace,
+            workspaceName: f.workspace || allocation.workspaceName,
+            parentUserStoryId:
+              String(f.parentUserStoryId || "") ||
+              allocation.parentUserStoryId ||
+              "",
+          };
+        }),
+      );
     }
     setEditing(null);
   }

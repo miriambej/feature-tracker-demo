@@ -240,3 +240,14 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .sprint-review-goal-number{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;min-width:15px;height:15px;padding:0 3px;border-radius:999px;background:#2f5da8;color:#fff;font-size:8px;line-height:1;font-weight:700;vertical-align:middle}
 .sprint-review-stage-goal{background:#ffd91a!important;color:#5b5200!important;font-weight:600}
 .app.light .sprint-review-stage-goal{background:#ffd91a!important;color:#5b5200!important}
+
+
+/* Sprint Review table-cell fix and tighter people column */
+.sprint-review-compact-table .sprint-review-workspace-name{
+  display:table-cell!important;
+  width:56%!important;
+}
+.sprint-review-compact-table th:nth-child(1){width:56%}
+.sprint-review-compact-table th:nth-child(2){width:24%}
+.sprint-review-compact-table th:nth-child(3){width:20%}
+.sprint-review-person-cell{width:24%;white-space:nowrap}

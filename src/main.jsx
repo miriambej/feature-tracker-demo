@@ -4961,10 +4961,10 @@ function DeliveryPlan({
   useEffect(() => {
     if (
       planWorkspaceFilter !== "ALL" &&
-      !availableWorkspaceFilters.includes(planWorkspaceFilter)
+      !allFeatureWorkspaces.includes(planWorkspaceFilter)
     )
       setPlanWorkspaceFilter("ALL");
-  }, [planWorkspaceFilter, availableWorkspaceFilters.join("|")]);
+  }, [planWorkspaceFilter, allFeatureWorkspaces.join("|")]);
   const matrixSprints = Array.from(
     new Set(
       [

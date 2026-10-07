@@ -7249,6 +7249,7 @@ function SprintReview({
     [allocations],
   );
   const [sprint, setSprint] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
 
   useEffect(() => {
     if (!sprintOptions.length) {
@@ -7346,94 +7347,155 @@ function SprintReview({
       .sort((a, b) => a.workspace.localeCompare(b.workspace));
   }, [reviewRows]);
 
-  const goalKeys = useMemo(
+  const numberedWorkspaceRows = useMemo(() => {
+    const seenGoals = new Set();
+    let nextGoalNumber = 1;
+
+    return workspaceRows.map((group) => ({
+      ...group,
+      rows: group.rows.map((row) => {
+        let goalNumber = null;
+        if (row.isGoal && !seenGoals.has(row.key)) {
+          seenGoals.add(row.key);
+          goalNumber = nextGoalNumber;
+          nextGoalNumber += 1;
+        }
+        return { ...row, goalNumber };
+      }),
+    }));
+  }, [workspaceRows]);
+
+  const goalCount = useMemo(
     () =>
-      Array.from(
-        new Set(reviewRows.filter((row) => row.isGoal).map((row) => row.key)),
+      numberedWorkspaceRows.reduce(
+        (count, group) =>
+          count + group.rows.filter((row) => row.goalNumber !== null).length,
+        0,
       ),
-    [reviewRows],
-  );
-  const goalNumberByKey = useMemo(
-    () => new Map(goalKeys.map((key, index) => [key, index + 1])),
-    [goalKeys],
+    [numberedWorkspaceRows],
   );
 
-  const goalCount = goalKeys.length;
+  async function copySprintReviewImage() {
+    const source = document.querySelector(".sprint-review-capture");
+    if (!source) return;
+    try {
+      setCopyStatus("Copying…");
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(source, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        throw new Error("Clipboard image copy is not supported in this browser.");
+      }
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob }),
+      ]);
+      setCopyStatus("Copied");
+      window.setTimeout(() => setCopyStatus(""), 1800);
+    } catch (error) {
+      console.error(error);
+      setCopyStatus("Could not copy");
+      window.setTimeout(() => setCopyStatus(""), 2500);
+    }
+  }
 
   return (
     <div className="dashboard sprint-review-dashboard">
-      <div className="sprint-review-compact-head">
-        <div>
-          <div className="eyebrow">Sprint Review</div>
-          <h2>Current sprint commitments</h2>
+      <div className="sprint-review-capture">
+        <div className="sprint-review-compact-head">
+          <div>
+            <div className="eyebrow">Sprint Review</div>
+            <h2>Current sprint commitments</h2>
+          </div>
+          <div className="sprint-review-compact-actions">
+            <span className="sprint-review-total">
+              <b>{numberedWorkspaceRows.length}</b> workspaces · <b>{goalCount}</b> goals
+            </span>
+            <label data-html2canvas-ignore="true">
+              Sprint
+              <select value={sprint} onChange={(event) => setSprint(event.target.value)}>
+                {sprintOptions.map((sprintId) => (
+                  <option key={sprintId} value={sprintId}>
+                    {sprintId}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="sprint-review-copy-button"
+              onClick={copySprintReviewImage}
+              title="Copy Sprint Review as image"
+              aria-label="Copy Sprint Review as image"
+              data-html2canvas-ignore="true"
+            >
+              <span aria-hidden="true">⧉</span>
+            </button>
+            {copyStatus && (
+              <small className="sprint-review-copy-status" data-html2canvas-ignore="true">
+                {copyStatus}
+              </small>
+            )}
+          </div>
         </div>
-        <div className="sprint-review-compact-actions">
-          <span className="sprint-review-total">
-            <b>{workspaceRows.length}</b> workspaces · <b>{goalCount}</b> goals
-          </span>
-          <label>
-            Sprint
-            <select value={sprint} onChange={(event) => setSprint(event.target.value)}>
-              {sprintOptions.map((sprintId) => (
-                <option key={sprintId} value={sprintId}>
-                  {sprintId}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
 
-      <div className="panel sprint-review-workspace-panel sprint-review-compact-panel">
-        <div className="sprint-review-table-wrap">
-          <table className="compact-table sprint-review-workspace-table sprint-review-compact-table">
-            <thead>
-              <tr>
-                <th>Workspace</th>
-                <th>People</th>
-                <th>Stage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workspaceRows.length ? (
-                workspaceRows.flatMap((group) =>
-                  group.rows.map((item, index) => (
-                    <tr key={`${group.workspace}-${item.key}-${item.owner}-${item.stage}-${index}`}>
-                      {index === 0 && (
-                        <td
-                          className="sprint-review-workspace-name"
-                          rowSpan={group.rows.length}
-                        >
-                          <strong>{group.workspace}</strong>
-                        </td>
-                      )}
-                      <td className="sprint-review-person-cell">
-                        <span>{item.owner}</span>
-                        {item.isGoal && (
-                          <b
-                            className="sprint-review-goal-number"
-                            title={`Goal ${goalNumberByKey.get(item.key)}: ${item.featureName}`}
-                          >
-                            {goalNumberByKey.get(item.key)}
-                          </b>
-                        )}
-                      </td>
-                      <td
-                        className={item.isGoal ? "sprint-review-stage-goal" : ""}
-                        title={item.featureName}
-                      >
-                        {item.stage}
-                      </td>
-                    </tr>
-                  )),
-                )
-              ) : (
+        <div className="panel sprint-review-workspace-panel sprint-review-compact-panel">
+          <div className="sprint-review-table-wrap">
+            <table className="compact-table sprint-review-workspace-table sprint-review-compact-table">
+              <thead>
                 <tr>
-                  <td colSpan="3">No planning allocations for this sprint.</td>
+                  <th>Feature</th>
+                  <th>People</th>
+                  <th>{sprint || "Sprint"}</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {numberedWorkspaceRows.length ? (
+                  numberedWorkspaceRows.flatMap((group) =>
+                    group.rows.map((item, index) => (
+                      <tr key={`${group.workspace}-${item.key}-${item.owner}-${item.stage}-${index}`}>
+                        {index === 0 && (
+                          <td
+                            className="sprint-review-workspace-name"
+                            rowSpan={group.rows.length}
+                          >
+                            <strong>{group.workspace}</strong>
+                          </td>
+                        )}
+                        <td className="sprint-review-person-cell">
+                          <span>{item.owner}</span>
+                          {item.goalNumber !== null && (
+                            <b
+                              className="sprint-review-goal-number"
+                              title={`Goal ${item.goalNumber}: ${item.featureName}`}
+                            >
+                              {item.goalNumber}
+                            </b>
+                          )}
+                        </td>
+                        <td
+                          className={item.isGoal ? "sprint-review-stage-goal" : ""}
+                          title={item.featureName}
+                        >
+                          {item.stage}
+                        </td>
+                      </tr>
+                    )),
+                  )
+                ) : (
+                  <tr>
+                    <td colSpan="3">No planning allocations for this sprint.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

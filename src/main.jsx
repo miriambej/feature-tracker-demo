@@ -294,7 +294,7 @@ function prodSupportStoryFeature(story) {
     localStoryId: story.id,
     isProdSupportStory: true,
     feature_name: prodSupportDisplayName(story),
-    workspace: PROD_SUPPORT_GROUP,
+    workspace: story.workspace || PROD_SUPPORT_GROUP,
     status: "initial",
     owner: "",
     user_count: 0,
@@ -2927,6 +2927,7 @@ function DeliveryPlan({
     notes: "",
   });
   const [selectedPlanFeature, setSelectedPlanFeature] = useState(null);
+  const [editingPlanItem, setEditingPlanItem] = useState(null);
   const [editingAllocation, setEditingAllocation] = useState(null);
   const [showAllDiagnostics, setShowAllDiagnostics] = useState(false);
   const [dayOffForm, setDayOffForm] = useState({
@@ -3636,6 +3637,75 @@ function DeliveryPlan({
         : current,
     );
   }
+  function openPlanningItemEditor(feature) {
+    if (!feature.planningKey && !feature.isProdSupportStory) {
+      onEditFeature(feature);
+      setSelectedPlanFeature(null);
+      return;
+    }
+    setEditingPlanItem({ ...feature });
+    setSelectedPlanFeature(null);
+  }
+  function savePlanningItemEdits() {
+    if (!editingPlanItem) return;
+    const nextName = String(editingPlanItem.feature_name || "").trim();
+    const nextWorkspace = String(editingPlanItem.workspace || "").trim();
+    const nextUserStoryId = String(
+      editingPlanItem.parentUserStoryId || "",
+    ).replace(/\D/g, "");
+    if (!nextName || !nextWorkspace) return;
+
+    if (editingPlanItem.planningKey) {
+      const planningKey = editingPlanItem.planningKey;
+      setAllocations((prev) =>
+        prev.map((allocation) => {
+          const key =
+            allocation.featureName ||
+            allocation.planningGroup ||
+            allocation.workspaceName;
+          if (key !== planningKey || allocationFeatureIds(allocation).length)
+            return allocation;
+          return {
+            ...allocation,
+            featureName: nextName,
+            planningGroup: nextWorkspace,
+            workspace: nextWorkspace,
+            workspaceName: nextWorkspace,
+            parentUserStoryId: nextUserStoryId,
+          };
+        }),
+      );
+    } else if (editingPlanItem.isProdSupportStory) {
+      setProdSupportStories((prev) =>
+        prev.map((story) =>
+          story.id === editingPlanItem.localStoryId
+            ? {
+                ...story,
+                name: nextName.replace(/^Prod Support\s*-\s*/i, ""),
+                workspace: nextWorkspace,
+                devOpsId: nextUserStoryId,
+                notes: editingPlanItem.notes || story.notes || "",
+              }
+            : story,
+        ),
+      );
+      setAllocations((prev) =>
+        prev.map((allocation) =>
+          allocationHasFeature(allocation, editingPlanItem.id)
+            ? {
+                ...allocation,
+                planningGroup: nextWorkspace,
+                workspace: nextWorkspace,
+                workspaceName: nextWorkspace,
+                parentUserStoryId: nextUserStoryId,
+              }
+            : allocation,
+        ),
+      );
+    }
+    setEditingPlanItem(null);
+  }
+
   function addReconcileLine(source) {
     const sourceId = allocationSourceId(source);
     setAllocations((prev) => [
@@ -6380,24 +6450,19 @@ function DeliveryPlan({
             </small>
           </div>
           <div className="feature-plan-actions">
+            <button
+              onClick={() => openPlanningItemEditor(selectedPlanFeature)}
+            >
+              Edit Feature
+            </button>
             {!selectedPlanFeature.planningKey &&
               !selectedPlanFeature.isProdSupportStory && (
-                <>
-                  <button
-                    onClick={() => {
-                      onEditFeature(selectedPlanFeature);
-                      setSelectedPlanFeature(null);
-                    }}
-                  >
-                    Edit Feature
-                  </button>
-                  <button
-                    className="danger-button"
-                    onClick={() => setFeaturePendingDelete(selectedPlanFeature)}
-                  >
-                    Delete Feature
-                  </button>
-                </>
+                <button
+                  className="danger-button"
+                  onClick={() => setFeaturePendingDelete(selectedPlanFeature)}
+                >
+                  Delete Feature
+                </button>
               )}
             <button onClick={() => setSelectedPlanFeature(null)}>Close</button>
           </div>
@@ -7060,6 +7125,68 @@ function DeliveryPlan({
                 <span>{entry}</span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {editingPlanItem && (
+        <div className="modal">
+          <div className="modal-card small">
+            <div className="panel-top">
+              <div>
+                <div className="eyebrow">Delivery Plan</div>
+                <h2>Edit feature</h2>
+              </div>
+              <button onClick={() => setEditingPlanItem(null)}>Close</button>
+            </div>
+            <div className="form-grid">
+              <label className="full">
+                Feature name
+                <input
+                  value={editingPlanItem.feature_name || ""}
+                  onChange={(e) =>
+                    setEditingPlanItem({
+                      ...editingPlanItem,
+                      feature_name: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="full">
+                Workspace
+                <input
+                  list="planning-edit-workspaces"
+                  value={editingPlanItem.workspace || ""}
+                  onChange={(e) =>
+                    setEditingPlanItem({
+                      ...editingPlanItem,
+                      workspace: e.target.value,
+                    })
+                  }
+                />
+                <datalist id="planning-edit-workspaces">
+                  {allFeatureWorkspaces.map((workspace) => (
+                    <option key={workspace} value={workspace} />
+                  ))}
+                </datalist>
+              </label>
+              <label>
+                User Story ID
+                <input
+                  inputMode="numeric"
+                  value={editingPlanItem.parentUserStoryId || ""}
+                  onChange={(e) =>
+                    setEditingPlanItem({
+                      ...editingPlanItem,
+                      parentUserStoryId: e.target.value.replace(/\D/g, ""),
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setEditingPlanItem(null)}>Cancel</button>
+              <button onClick={savePlanningItemEdits}>Save</button>
+            </div>
           </div>
         </div>
       )}

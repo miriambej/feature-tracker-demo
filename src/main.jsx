@@ -7318,15 +7318,31 @@ function SprintReview({
     });
 
     return Array.from(groups.values())
-      .map((group) => ({
-        ...group,
-        rows: group.rows.sort(
-          (a, b) =>
-            stageSortIndex(a.stage) - stageSortIndex(b.stage) ||
-            a.owner.localeCompare(b.owner) ||
-            a.featureName.localeCompare(b.featureName),
-        ),
-      }))
+      .map((group) => {
+        const displayRows = [];
+        const seen = new Set();
+
+        group.rows
+          .sort(
+            (a, b) =>
+              stageSortIndex(a.stage) - stageSortIndex(b.stage) ||
+              a.owner.localeCompare(b.owner) ||
+              a.featureName.localeCompare(b.featureName),
+          )
+          .forEach((row) => {
+            const dedupeKey = row.isGoal
+              ? `goal||${row.key}||${row.owner}||${row.stage}`
+              : `planned||${row.owner}||${row.stage}`;
+            if (seen.has(dedupeKey)) return;
+            seen.add(dedupeKey);
+            displayRows.push(row);
+          });
+
+        return {
+          workspace: group.workspace,
+          rows: displayRows,
+        };
+      })
       .sort((a, b) => a.workspace.localeCompare(b.workspace));
   }, [reviewRows]);
 

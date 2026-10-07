@@ -132,3 +132,41 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .app.light .allocation-workspace-group-row td{background:#eef2ff;border-color:#d9def8}
 .app.light .allocation-nested-feature-name:before{color:#7a7a8a}
 @media(max-width:900px){.allocation-filter-secondary{margin-left:0}.allocation-filter-bar{align-items:stretch}.allocation-filter-primary,.allocation-filter-secondary{width:100%}}
+
+
+/* Sprint review workspace summary */
+.sprint-review-dashboard{max-width:1600px;margin:0 auto}
+.sprint-review-head{align-items:flex-end;gap:24px}
+.sprint-review-head h1{margin-bottom:4px}
+.sprint-review-controls label{display:flex;align-items:center;gap:10px;font-weight:700}
+.sprint-review-controls select{min-width:150px}
+.sprint-review-summary{display:grid;grid-template-columns:repeat(3,minmax(150px,220px));gap:12px;margin:0 0 16px}
+.sprint-review-summary>div{display:flex;flex-direction:column;gap:3px;padding:14px 16px;border:1px solid rgba(148,163,184,.22);border-radius:14px;background:rgba(15,23,42,.34)}
+.sprint-review-summary span{font-size:12px;text-transform:uppercase;letter-spacing:.06em;opacity:.68}
+.sprint-review-summary strong{font-size:24px;line-height:1.1}
+.sprint-review-workspace-panel{padding:0;overflow:hidden}
+.sprint-review-table-wrap{overflow:auto}
+.sprint-review-workspace-table{width:100%;min-width:980px}
+.sprint-review-workspace-table th{position:sticky;top:0;z-index:1}
+.sprint-review-workspace-table th:nth-child(1){width:25%}
+.sprint-review-workspace-table th:nth-child(2){width:23%}
+.sprint-review-workspace-table th:nth-child(3){width:37%}
+.sprint-review-workspace-table th:nth-child(4){width:15%}
+.sprint-review-workspace-table td{vertical-align:top;padding-top:14px;padding-bottom:14px}
+.sprint-review-workspace-name{display:flex;flex-direction:column;gap:5px}
+.sprint-review-workspace-name strong{font-size:15px}
+.sprint-review-workspace-name small{opacity:.66}
+.sprint-review-people,.sprint-review-goals,.sprint-review-stages{display:flex;flex-direction:column;gap:7px}
+.sprint-review-people>span{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.sprint-review-people b{white-space:nowrap;padding:3px 7px;border-radius:999px;background:rgba(250,204,21,.16);font-size:11px}
+.sprint-review-goal{padding:8px 10px;border-radius:9px;background:rgba(250,204,21,.12);border:1px solid rgba(250,204,21,.24)}
+.sprint-review-goal b,.sprint-review-goal small{display:block}
+.sprint-review-goal small{margin-top:3px;opacity:.7}
+.sprint-review-no-goal{opacity:.5}
+.sprint-review-stages{align-items:flex-start}
+.sprint-review-stages span{display:inline-flex;padding:4px 8px;border-radius:999px;background:rgba(148,163,184,.12);font-size:12px;white-space:nowrap}
+.app.light .sprint-review-summary>div{background:#fff;border-color:#d9dee8}
+.app.light .sprint-review-people b{background:#fff3b8}
+.app.light .sprint-review-goal{background:#fff8d6;border-color:#f0d875}
+.app.light .sprint-review-stages span{background:#eef1f5}
+@media(max-width:900px){.sprint-review-summary{grid-template-columns:1fr 1fr 1fr}.sprint-review-head{align-items:flex-start;flex-direction:column}}

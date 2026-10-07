@@ -7312,71 +7312,37 @@ function SprintReview({
         groups.set(row.workspace, {
           workspace: row.workspace,
           rows: [],
-          people: new Set(),
-          stages: new Set(),
-          goalMap: new Map(),
-          ownerGoals: new Map(),
         });
       }
-      const group = groups.get(row.workspace);
-      group.rows.push(row);
-      group.people.add(row.owner);
-      if (row.stage) group.stages.add(row.stage);
-
-      if (row.isGoal) {
-        if (!group.goalMap.has(row.key)) {
-          group.goalMap.set(row.key, {
-            key: row.key,
-            featureName: row.featureName,
-            owners: new Set(),
-            stages: new Set(),
-          });
-        }
-        const goal = group.goalMap.get(row.key);
-        goal.owners.add(row.owner);
-        if (row.stage) goal.stages.add(row.stage);
-
-        if (!group.ownerGoals.has(row.owner)) {
-          group.ownerGoals.set(row.owner, new Set());
-        }
-        group.ownerGoals.get(row.owner).add(row.key);
-      }
+      groups.get(row.workspace).rows.push(row);
     });
 
     return Array.from(groups.values())
       .map((group) => ({
-        workspace: group.workspace,
-        people: Array.from(group.people).sort(),
-        stages: Array.from(group.stages).sort(
-          (a, b) => stageSortIndex(a) - stageSortIndex(b) || a.localeCompare(b),
+        ...group,
+        rows: group.rows.sort(
+          (a, b) =>
+            stageSortIndex(a.stage) - stageSortIndex(b.stage) ||
+            a.owner.localeCompare(b.owner) ||
+            a.featureName.localeCompare(b.featureName),
         ),
-        goals: Array.from(group.goalMap.values())
-          .map((goal) => ({
-            ...goal,
-            owners: Array.from(goal.owners).sort(),
-            stages: Array.from(goal.stages).sort(
-              (a, b) =>
-                stageSortIndex(a) - stageSortIndex(b) || a.localeCompare(b),
-            ),
-          }))
-          .sort((a, b) => a.featureName.localeCompare(b.featureName)),
-        ownerGoals: Array.from(group.ownerGoals.entries())
-          .map(([owner, goalKeys]) => ({
-            owner,
-            count: goalKeys.size,
-          }))
-          .sort((a, b) => b.count - a.count || a.owner.localeCompare(b.owner)),
       }))
       .sort((a, b) => a.workspace.localeCompare(b.workspace));
   }, [reviewRows]);
 
-  const goalCount = useMemo(
+  const goalKeys = useMemo(
     () =>
-      new Set(
-        reviewRows.filter((row) => row.isGoal).map((row) => row.key),
-      ).size,
+      Array.from(
+        new Set(reviewRows.filter((row) => row.isGoal).map((row) => row.key)),
+      ),
     [reviewRows],
   );
+  const goalNumberByKey = useMemo(
+    () => new Map(goalKeys.map((key, index) => [key, index + 1])),
+    [goalKeys],
+  );
+
+  const goalCount = goalKeys.length;
 
   return (
     <div className="dashboard sprint-review-dashboard">
@@ -7408,52 +7374,43 @@ function SprintReview({
             <thead>
               <tr>
                 <th>Workspace</th>
-                <th>People / Goals</th>
+                <th>People</th>
                 <th>Stage</th>
               </tr>
             </thead>
             <tbody>
               {workspaceRows.length ? (
-                workspaceRows.map((row) => (
-                  <tr key={row.workspace}>
-                    <td
-                      className="sprint-review-workspace-name"
-                      title={
-                        row.goals.length
-                          ? row.goals.map((goal) => goal.featureName).join(" · ")
-                          : undefined
-                      }
-                    >
-                      <strong>{row.workspace}</strong>
-                    </td>
-                    <td>
-                      <div className="sprint-review-people sprint-review-people-compact">
-                        {row.people.map((person) => {
-                          const goalTotal =
-                            row.ownerGoals.find((item) => item.owner === person)
-                              ?.count || 0;
-                          return (
-                            <span key={person}>
-                              <span>{person}</span>
-                              {goalTotal > 0 && (
-                                <b title={`${person}: ${goalTotal} sprint goal${goalTotal === 1 ? "" : "s"}`}>
-                                  {goalTotal}
-                                </b>
-                              )}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="sprint-review-stages sprint-review-stages-compact">
-                        {row.stages.map((stage) => (
-                          <span key={stage}>{stage}</span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                workspaceRows.flatMap((group) =>
+                  group.rows.map((item, index) => (
+                    <tr key={`${group.workspace}-${item.key}-${item.owner}-${item.stage}-${index}`}>
+                      {index === 0 && (
+                        <td
+                          className="sprint-review-workspace-name"
+                          rowSpan={group.rows.length}
+                        >
+                          <strong>{group.workspace}</strong>
+                        </td>
+                      )}
+                      <td className="sprint-review-person-cell">
+                        <span>{item.owner}</span>
+                        {item.isGoal && (
+                          <b
+                            className="sprint-review-goal-number"
+                            title={`Goal ${goalNumberByKey.get(item.key)}: ${item.featureName}`}
+                          >
+                            {goalNumberByKey.get(item.key)}
+                          </b>
+                        )}
+                      </td>
+                      <td
+                        className={item.isGoal ? "sprint-review-stage-goal" : ""}
+                        title={item.featureName}
+                      >
+                        {item.stage}
+                      </td>
+                    </tr>
+                  )),
+                )
               ) : (
                 <tr>
                   <td colSpan="3">No planning allocations for this sprint.</td>

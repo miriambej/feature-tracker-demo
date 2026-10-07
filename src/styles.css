@@ -197,3 +197,27 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .sprint-review-stages-compact span{padding:2px 5px;border-radius:4px;font-size:9.5px;line-height:1.2}
 .app.light .sprint-review-people-compact b{background:#2f5da8;color:#fff}
 @media(max-width:900px){.sprint-review-compact-head{align-items:flex-start;flex-direction:column}.sprint-review-compact-actions{width:100%;justify-content:space-between}}
+
+
+/* Extra-tight Sprint Review block for slide capture */
+.sprint-review-dashboard{max-width:680px;margin:0}
+.sprint-review-compact-head{max-width:680px;margin-bottom:6px}
+.sprint-review-compact-head h2{font-size:16px}
+.sprint-review-compact-actions{gap:8px}
+.sprint-review-total{font-size:10.5px;padding-bottom:4px}
+.sprint-review-compact-actions label{font-size:10.5px}
+.sprint-review-compact-actions select{min-width:92px;padding:3px 6px;font-size:10.5px}
+.sprint-review-compact-panel{width:100%;max-width:680px}
+.sprint-review-table-wrap{overflow:visible}
+.sprint-review-compact-table{width:100%;min-width:0;font-size:9.5px;line-height:1.05}
+.sprint-review-compact-table th{padding:4px 5px;font-size:9.5px}
+.sprint-review-compact-table td{padding:3px 5px}
+.sprint-review-compact-table th:nth-child(1){width:43%}
+.sprint-review-compact-table th:nth-child(2){width:37%}
+.sprint-review-compact-table th:nth-child(3){width:20%}
+.sprint-review-compact-table .sprint-review-workspace-name strong{font-size:9.8px}
+.sprint-review-people-compact{gap:1px}
+.sprint-review-people-compact>span{min-height:13px;gap:4px}
+.sprint-review-people-compact b{min-width:14px;height:14px;padding:0 3px;font-size:8px}
+.sprint-review-stages-compact{gap:2px}
+.sprint-review-stages-compact span{padding:1px 4px;font-size:8.5px}

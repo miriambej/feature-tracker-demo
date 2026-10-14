@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { MIGRATION_FEATURE_NAMES } from "./migrationCatalog.js";
+import SprintPlanning from "./SprintPlanning.jsx";
 import "./styles.css";
 
 const STORAGE_KEY = "feature-tracker-v2-full";
@@ -7658,6 +7659,9 @@ function App() {
   const [finalStageByFeatureId, setFinalStageByFeatureId] = useState({});
   const [backlogOrder, setBacklogOrder] = useState([]);
   const [customSprints, setCustomSprints] = useState([]);
+  const [sprintPlanningMeta, setSprintPlanningMeta] = useState({});
+  const [sprintPlanningDisplay, setSprintPlanningDisplay] = useState({});
+  const [completedFeatureClosures, setCompletedFeatureClosures] = useState({});
   const [mode, setMode] = useState("executive");
   const [theme, setTheme] = useState(
     () => localStorage.getItem("feature-tracker-theme") || "dark",
@@ -7686,6 +7690,9 @@ function App() {
         setFinalStageByFeatureId(saved.finalStageByFeatureId || {});
         setBacklogOrder(saved.backlogOrder || []);
         setCustomSprints(saved.customSprints || []);
+        setSprintPlanningMeta(saved.sprintPlanningMeta || {});
+        setSprintPlanningDisplay(saved.sprintPlanningDisplay || {});
+        setCompletedFeatureClosures(saved.completedFeatureClosures || {});
       }
     } catch {
     } finally {
@@ -7709,6 +7716,9 @@ function App() {
             finalStageByFeatureId,
             backlogOrder,
             customSprints,
+            sprintPlanningMeta,
+            sprintPlanningDisplay,
+            completedFeatureClosures,
           }),
         ),
       200,
@@ -7725,6 +7735,9 @@ function App() {
     finalStageByFeatureId,
     backlogOrder,
     customSprints,
+    sprintPlanningMeta,
+    sprintPlanningDisplay,
+    completedFeatureClosures,
     loaded,
   ]);
   useEffect(() => {
@@ -7989,6 +8002,12 @@ function App() {
             Delivery Plan
           </button>
           <button
+            className={mode === "sprintPlanning" ? "active" : ""}
+            onClick={() => setMode("sprintPlanning")}
+          >
+            Sprint Planning
+          </button>
+          <button
             className={mode === "sprintReview" ? "active" : ""}
             onClick={() => setMode("sprintReview")}
           >
@@ -8111,6 +8130,26 @@ function App() {
           onDeleteFeature={deleteFeature}
           backlogOrder={backlogOrder}
           setBacklogOrder={setBacklogOrder}
+        />
+      )}{" "}
+      {mode === "sprintPlanning" && (
+        <SprintPlanning
+          allocations={allocations}
+          setAllocations={setAllocations}
+          customSprints={customSprints}
+          sprintDates={sprintDates}
+          features={executiveFeatures}
+          getFinalStage={(feature) =>
+            finalStageByFeatureId?.[feature.id]
+              ? normaliseFinalStage(finalStageByFeatureId[feature.id])
+              : defaultFinalStageForFeature(feature)
+          }
+          sprintPlanningMeta={sprintPlanningMeta}
+          setSprintPlanningMeta={setSprintPlanningMeta}
+          sprintPlanningDisplay={sprintPlanningDisplay}
+          setSprintPlanningDisplay={setSprintPlanningDisplay}
+          completedFeatureClosures={completedFeatureClosures}
+          setCompletedFeatureClosures={setCompletedFeatureClosures}
         />
       )}{" "}
       {mode === "sprintReview" && (

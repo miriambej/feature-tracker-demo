@@ -278,6 +278,12 @@ function allocationFeatureComplete(allocation, featureId) {
       : false;
   return !!allocation.isStageComplete;
 }
+function allocationAdvancesPlanning(allocation) {
+  return (
+    !!allocation?.isStageComplete ||
+    allocation?.achievementStatus === "achieved"
+  );
+}
 const PROD_SUPPORT_GROUP = "Prod Support";
 const CREATE_PROD_STORY_VALUE = "__create_prod_support_story__";
 function isProdSupportGroup(name) {
@@ -326,7 +332,7 @@ function commentStoryParts(comment) {
 }
 function plannedThrough(featureId, allocations) {
   const stages = allocations
-    .filter((a) => allocationHasFeature(a, featureId) && a.isStageComplete)
+    .filter((a) => allocationHasFeature(a, featureId) && allocationAdvancesPlanning(a))
     .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   const max = stages.length ? Math.max(...stages) : -1;
@@ -498,7 +504,7 @@ function nextPlanningStageFromRows(
   const targetIdx = finalStageIndex(finalStage);
   const doneIdx = PLAN_STAGES.indexOf(actualCompletedThrough(feature.status));
   const completedIdx = rows
-    .filter((a) => a.isStageComplete)
+    .filter((a) => allocationAdvancesPlanning(a))
     .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   if (
@@ -3215,7 +3221,7 @@ function DeliveryPlan({
       actualCompletedThrough(feature.status),
     );
     const completed = rows
-      .filter((a) => a.isStageComplete)
+      .filter((a) => allocationAdvancesPlanning(a))
       .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0);
     const max = Math.max(
@@ -3235,11 +3241,11 @@ function DeliveryPlan({
     const targetIdx = finalStageIndex(featureFinalStage(feature));
     const floorIdx = PLAN_STAGES.indexOf(floor);
     const plannedOnly = rows
-      .filter((a) => !a.isStageComplete)
+      .filter((a) => !allocationAdvancesPlanning(a))
       .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0);
     const completedNext = rows
-      .filter((a) => a.isStageComplete)
+      .filter((a) => allocationAdvancesPlanning(a))
       .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0)
       .map((i) => Math.min(i + 1, targetIdx));

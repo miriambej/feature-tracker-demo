@@ -197,8 +197,12 @@ export default function SprintPlanning({
         group.allocationIds.push(allocation.id);
         group.statuses.push(outcomeStatus(allocation));
       });
+    const goalOverrides = sprintPlanningMeta[sprintId]?.goalOverrides || {};
     return Array.from(groups.values()).map((group) => ({
       ...group,
+      isGoal: Object.prototype.hasOwnProperty.call(goalOverrides, group.key)
+        ? !!goalOverrides[group.key]
+        : group.isGoal,
       status: rowStatus(group.statuses),
     }));
   }
@@ -219,7 +223,13 @@ export default function SprintPlanning({
           a.featureName.localeCompare(b.featureName) ||
           stageIndex(a.stage) - stageIndex(b.stage),
       );
-  }, [sprint, allocations, featureById, sprintPlanningDisplay]);
+  }, [
+    sprint,
+    allocations,
+    featureById,
+    sprintPlanningDisplay,
+    sprintPlanningMeta,
+  ]);
 
   const visibleRows = rows.filter(
     (row) => showHidden || row.displayMode !== "hidden",
@@ -239,6 +249,19 @@ export default function SprintPlanning({
     setSprintPlanningDisplay((current) => ({
       ...current,
       [row.prefKey]: displayMode,
+    }));
+  }
+
+  function setGoal(row, isGoal) {
+    setSprintPlanningMeta((current) => ({
+      ...current,
+      [sprint]: {
+        ...(current[sprint] || {}),
+        goalOverrides: {
+          ...((current[sprint] || {}).goalOverrides || {}),
+          [row.key]: isGoal,
+        },
+      },
     }));
   }
 
@@ -342,29 +365,58 @@ export default function SprintPlanning({
     }));
   }
 
-  const completedFeatures = useMemo(() => {
-    return features
-      .map((feature) => {
-        const finalStage = getFinalStage(feature);
-        const finalIndex = stageIndex(finalStage);
-        const completed = allocations
-          .filter(
-            (allocation) =>
-              allocation.featureId === feature.id &&
-              outcomeStatus(allocation) === "achieved" &&
-              stageIndex(allocation.stage) >= finalIndex,
-          )
-          .sort((a, b) => normSprint(a.sprint).localeCompare(normSprint(b.sprint)));
-        if (!completed.length) return null;
-        return { feature, sprintId: normSprint(completed[0].sprint) };
+  const completedGroups = useMemo(() => {
+    const completionByFeatureId = new Map();
+
+    features.forEach((feature) => {
+      const finalStage = getFinalStage(feature);
+      const finalIndex = stageIndex(finalStage);
+      const completed = allocations
+        .filter(
+          (allocation) =>
+            allocation.featureId === feature.id &&
+            outcomeStatus(allocation) === "achieved" &&
+            stageIndex(allocation.stage) >= finalIndex,
+        )
+        .map((allocation) => normSprint(allocation.sprint))
+        .filter(Boolean)
+        .sort();
+      if (completed.length) completionByFeatureId.set(feature.id, completed[0]);
+    });
+
+    const groups = new Map();
+    features.forEach((feature) => {
+      const groupName = normText(feature.workspace || feature.feature_name || "Unknown");
+      if (!groups.has(groupName)) groups.set(groupName, []);
+      groups.get(groupName).push(feature);
+    });
+
+    return Array.from(groups.entries())
+      .map(([groupName, groupFeatures]) => {
+        const completionSprints = groupFeatures
+          .map((feature) => completionByFeatureId.get(feature.id))
+          .filter(Boolean);
+        if (
+          completionSprints.length !== groupFeatures.length ||
+          !completionSprints.length
+        )
+          return null;
+        const sprintId = completionSprints.slice().sort().at(-1);
+        if (!sprintId?.startsWith(quarter)) return null;
+        return {
+          groupName,
+          sprintId,
+          featureCount: groupFeatures.length,
+          closureKey: `group:${keyText(groupName)}`,
+        };
       })
       .filter(Boolean)
       .sort(
         (a, b) =>
           a.sprintId.localeCompare(b.sprintId) ||
-          a.feature.feature_name.localeCompare(b.feature.feature_name),
+          a.groupName.localeCompare(b.groupName),
       );
-  }, [features, allocations, getFinalStage]);
+  }, [features, allocations, getFinalStage, quarter]);
 
   const selectedStat = sprintStats.find((item) => item.sprintId === sprint);
 
@@ -465,6 +517,7 @@ export default function SprintPlanning({
                   <th>Show</th>
                   <th>Feature</th>
                   <th>Stage</th>
+                  <th>Goal</th>
                   <th>Result</th>
                 </tr>
               </thead>
@@ -495,6 +548,16 @@ export default function SprintPlanning({
                     </td>
                     <td>{row.stage}</td>
                     <td>
+                      <label className="sprint-goal-toggle" title="Controls sprint predictability only. It does not change Delivery Plan expected completion.">
+                        <input
+                          type="checkbox"
+                          checked={row.isGoal}
+                          onChange={(event) => setGoal(row, event.target.checked)}
+                        />
+                        <span>{row.isGoal ? "Goal" : "No"}</span>
+                      </label>
+                    </td>
+                    <td>
                       <div className="achievement-buttons">
                         <button
                           type="button"
@@ -519,7 +582,7 @@ export default function SprintPlanning({
                   </tr>
                 ))}
                 {!visibleRows.length && (
-                  <tr><td colSpan="5">No sprint planning rows to show.</td></tr>
+                  <tr><td colSpan="6">No sprint planning rows to show.</td></tr>
                 )}
               </tbody>
             </table>
@@ -602,35 +665,37 @@ export default function SprintPlanning({
       <div className="panel completed-features-panel">
         <div className="panel-top">
           <div>
-            <h3>Features completed</h3>
-            <p className="muted">A feature appears when its final planned stage is marked achieved.</p>
+            <h3>Groups completed</h3>
+            <p className="muted">
+              All groups completed in {quarter}, regardless of which sprint is selected above.
+            </p>
           </div>
-          <span className="mini-count">{completedFeatures.length}</span>
+          <span className="mini-count">{completedGroups.length}</span>
         </div>
         <div className="sprint-planning-table-wrap">
           <table className="compact-table">
-            <thead><tr><th>Name</th><th>Sprint</th><th>Close in DevOps</th></tr></thead>
+            <thead><tr><th>Group</th><th>Completed sprint</th><th>Close in DevOps</th></tr></thead>
             <tbody>
-              {completedFeatures.map(({ feature, sprintId }) => (
-                <tr key={feature.id}>
-                  <td>{feature.feature_name}</td>
+              {completedGroups.map(({ groupName, sprintId, closureKey }) => (
+                <tr key={closureKey}>
+                  <td>{groupName}</td>
                   <td>{sprintId}</td>
                   <td>
                     <input
                       type="date"
-                      value={completedFeatureClosures[feature.id] || ""}
+                      value={completedFeatureClosures[closureKey] || ""}
                       onChange={(event) =>
                         setCompletedFeatureClosures((current) => ({
                           ...current,
-                          [feature.id]: event.target.value,
+                          [closureKey]: event.target.value,
                         }))
                       }
                     />
                   </td>
                 </tr>
               ))}
-              {!completedFeatures.length && (
-                <tr><td colSpan="3">No completed features yet.</td></tr>
+              {!completedGroups.length && (
+                <tr><td colSpan="3">No groups completed in {quarter} yet.</td></tr>
               )}
             </tbody>
           </table>

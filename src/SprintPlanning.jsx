@@ -336,7 +336,17 @@ export default function SprintPlanning({
         <div className="sprint-planning-filters">
           <label>
             Quarter
-            <select value={quarter} onChange={(event) => setQuarter(event.target.value)}>
+            <select
+              value={quarter}
+              onChange={(event) => {
+                const nextQuarter = event.target.value;
+                setQuarter(nextQuarter);
+                const nextSprint = sprintOptions
+                  .filter((item) => item.startsWith(nextQuarter))
+                  .at(-1);
+                if (nextSprint) setSprint(nextSprint);
+              }}
+            >
               {quarterOptions.map((item) => <option key={item}>{item}</option>)}
             </select>
           </label>

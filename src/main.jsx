@@ -5674,7 +5674,7 @@ function DeliveryPlan({
               sprintAllocs.map((a) => (
                 <button
                   type="button"
-                  className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""} ${a.stageComment ? "has-comment" : ""}`}
+                  className={`allocation-chip ${a.isStageComplete ? "goal" : ""} ${a.achievementStatus === "achieved" ? (a.isStageComplete ? "goal-achieved" : "stretch-achieved") : ""} ${a.achievementStatus === "not_achieved" ? "not-achieved" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""} ${a.stageComment ? "has-comment" : ""}`}
                   key={a.id}
                   aria-label={
                     a.stageComment
@@ -5698,7 +5698,15 @@ function DeliveryPlan({
                     {Number(a.days || 0)}d
                   </span>
                   <small>
-                    {a.isStageComplete ? "Expected Complete" : "Planned"}
+                    {a.achievementStatus === "achieved"
+                      ? a.isStageComplete
+                        ? "Goal achieved"
+                        : "Stretch achieved"
+                      : a.achievementStatus === "not_achieved"
+                        ? "Not achieved"
+                        : a.isStageComplete
+                          ? "Goal"
+                          : "Planned"}
                     {a.featureIds?.length > 1 ? " / shared allocation" : ""}
                   </small>
                   {a.stageComment && (
@@ -6349,7 +6357,7 @@ function DeliveryPlan({
       </div>
       <div className={`reconcile-total ${reconciledDays === originalSourceDays ? "balanced" : "unbalanced"}`}>Planning lines total: {reconciledDays}d / original {originalSourceDays}d {reconciledDays === originalSourceDays ? "(reconciled)" : "(split total differs from source)"}</div>
       <div className="reconcile-table-wrap"><table className="compact-table reconcile-table">
-        <thead><tr><th>Child Feature</th><th>Sprint</th><th>Owner</th><th>Stage</th><th>Days</th><th>Outcome</th><th>Delete</th></tr></thead>
+        <thead><tr><th>Child Feature</th><th>Sprint</th><th>Owner</th><th>Stage</th><th>Days</th><th>Goal</th><th>Result</th><th>Delete</th></tr></thead>
         <tbody>{reconciliationLines.map(line => {
           const availability = availabilityForSprint(line.sprint);
           const selectedAvailability = availability.find(
@@ -6362,11 +6370,12 @@ function DeliveryPlan({
               <td><select value={line.owner || ""} onChange={e => updateAllocation(line.id, { owner: e.target.value })}><option value="">Unassigned</option>{ownerOptions.map(o => <option key={o}>{o}</option>)}</select></td>
               <td><select value={line.stage || NEEDS_MAPPING_STAGE} onChange={e => updateAllocation(line.id, { stage: e.target.value })}>{STAGE_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></td>
               <td><input type="number" min="0" value={Number(line.days || 0)} onChange={e => updateAllocation(line.id, { days: Number(e.target.value || 0), sharedVisibility: false })}/></td>
-              <td><select value={allocationOutcomeComplete(line) ? "complete" : "planned"} onChange={e => updateAllocationOutcome(line, e.target.value === "complete")}><option value="planned">Planned</option><option value="complete">Expected complete</option></select></td>
+              <td><select value={allocationOutcomeComplete(line) ? "complete" : "planned"} onChange={e => updateAllocationOutcome(line, e.target.value === "complete")}><option value="planned">Planned</option><option value="complete">Goal</option></select></td>
+              <td><select value={line.achievementStatus || "pending"} onChange={e => updateAllocation(line.id, { achievementStatus: e.target.value })}><option value="pending">Not confirmed</option><option value="achieved">Achieved</option><option value="not_achieved">Not achieved</option></select></td>
               <td><button onClick={() => deletePlanningLine(line.id)}>Delete</button></td>
             </tr>
             <tr className="reconcile-availability-row">
-              <td colSpan="7">
+              <td colSpan="8">
                 <div className="capacity-chip-section reconcile-capacity">
                   <div className="reconcile-capacity-heading">
                     <b>Team availability · {line.sprint || "Select a sprint"}</b>

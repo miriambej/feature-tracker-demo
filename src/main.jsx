@@ -279,10 +279,9 @@ function allocationFeatureComplete(allocation, featureId) {
   return !!allocation.isStageComplete;
 }
 function allocationAdvancesPlanning(allocation) {
-  return (
-    !!allocation?.isStageComplete ||
-    allocation?.achievementStatus === "achieved"
-  );
+  if (allocation?.achievementStatus === "achieved") return true;
+  if (allocation?.achievementStatus === "not_achieved") return false;
+  return !!allocation?.isStageComplete;
 }
 const PROD_SUPPORT_GROUP = "Prod Support";
 const CREATE_PROD_STORY_VALUE = "__create_prod_support_story__";
@@ -2861,6 +2860,12 @@ function DeliveryPlan({
   onDeleteFeature,
   backlogOrder,
   setBacklogOrder,
+  sprintPlanningMeta,
+  setSprintPlanningMeta,
+  sprintPlanningDisplay,
+  setSprintPlanningDisplay,
+  completedFeatureClosures,
+  setCompletedFeatureClosures,
 }) {
   const sprintOptions = useMemo(() => {
     const fromData = Array.from(
@@ -3993,6 +3998,9 @@ function DeliveryPlan({
       sprintDates,
       prodSupportStories,
       finalStageByFeatureId,
+      sprintPlanningMeta,
+      sprintPlanningDisplay,
+      completedFeatureClosures,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -4223,6 +4231,9 @@ function DeliveryPlan({
         setSprintDates(restoredSprintDates);
         setProdSupportStories(restoredProdStories);
         setFinalStageByFeatureId(restoredFinalStages);
+        setSprintPlanningMeta(data.sprintPlanningMeta || {});
+        setSprintPlanningDisplay(data.sprintPlanningDisplay || {});
+        setCompletedFeatureClosures(data.completedFeatureClosures || {});
         setCustomSprints(restoredSprints);
         setImportDiagnostics([]);
         setSprint(nextSprint);
@@ -8145,6 +8156,12 @@ function App() {
           onDeleteFeature={deleteFeature}
           backlogOrder={backlogOrder}
           setBacklogOrder={setBacklogOrder}
+          sprintPlanningMeta={sprintPlanningMeta}
+          setSprintPlanningMeta={setSprintPlanningMeta}
+          sprintPlanningDisplay={sprintPlanningDisplay}
+          setSprintPlanningDisplay={setSprintPlanningDisplay}
+          completedFeatureClosures={completedFeatureClosures}
+          setCompletedFeatureClosures={setCompletedFeatureClosures}
         />
       )}{" "}
       {mode === "sprintPlanning" && (

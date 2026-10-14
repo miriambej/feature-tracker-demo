@@ -189,6 +189,7 @@ export default function SprintPlanning({
             workspace,
             stage,
             isGoal: goal,
+            isStretch: false,
             allocationIds: [],
             statuses: [],
           });
@@ -196,15 +197,38 @@ export default function SprintPlanning({
         const group = groups.get(key);
         group.allocationIds.push(allocation.id);
         group.statuses.push(outcomeStatus(allocation));
+        if (allocation.isUnplannedStretch) group.isStretch = true;
       });
     const goalOverrides = sprintPlanningMeta[sprintId]?.goalOverrides || {};
-    return Array.from(groups.values()).map((group) => ({
-      ...group,
-      isGoal: Object.prototype.hasOwnProperty.call(goalOverrides, group.key)
+    const classificationOverrides =
+      sprintPlanningMeta[sprintId]?.classificationOverrides || {};
+    return Array.from(groups.values()).map((group) => {
+      const legacyGoalOverride = Object.prototype.hasOwnProperty.call(
+        goalOverrides,
+        group.key,
+      )
         ? !!goalOverrides[group.key]
-        : group.isGoal,
-      status: rowStatus(group.statuses),
-    }));
+        : null;
+      const defaultClassification = group.isGoal
+        ? "goal"
+        : group.isStretch
+          ? "stretch"
+          : "other";
+      const classification =
+        classificationOverrides[group.key] ||
+        (legacyGoalOverride === true
+          ? "goal"
+          : legacyGoalOverride === false
+            ? "other"
+            : defaultClassification);
+      return {
+        ...group,
+        classification,
+        isGoal: classification === "goal",
+        isStretch: classification === "stretch",
+        status: rowStatus(group.statuses),
+      };
+    });
   }
 
   const rows = useMemo(() => {
@@ -252,14 +276,14 @@ export default function SprintPlanning({
     }));
   }
 
-  function setGoal(row, isGoal) {
+  function setClassification(row, classification) {
     setSprintPlanningMeta((current) => ({
       ...current,
       [sprint]: {
         ...(current[sprint] || {}),
-        goalOverrides: {
-          ...((current[sprint] || {}).goalOverrides || {}),
-          [row.key]: isGoal,
+        classificationOverrides: {
+          ...((current[sprint] || {}).classificationOverrides || {}),
+          [row.key]: classification,
         },
       },
     }));
@@ -308,7 +332,7 @@ export default function SprintPlanning({
   function toneFor(row) {
     if (row.status === "not_achieved") return "not-achieved";
     if (row.status === "achieved" && row.isGoal) return "goal-achieved";
-    if (row.status === "achieved" && !row.isGoal) return "stretch-achieved";
+    if (row.status === "achieved" && row.isStretch) return "stretch-achieved";
     if (row.isGoal) return "goal-pending";
     return "planned-pending";
   }
@@ -321,7 +345,7 @@ export default function SprintPlanning({
       (row) => row.isGoal && row.status === "achieved",
     ).length;
     const stretch = grouped.filter(
-      (row) => !row.isGoal && row.status === "achieved",
+      (row) => row.isStretch && row.status === "achieved",
     ).length;
     const counts = sprintPlanningMeta[sprintId]?.fistOfFive || {};
     const responses = [1, 2, 3, 4, 5].reduce(
@@ -517,7 +541,7 @@ export default function SprintPlanning({
                   <th>Show</th>
                   <th>Feature</th>
                   <th>Stage</th>
-                  <th>Goal</th>
+                  <th>Type</th>
                   <th>Result</th>
                 </tr>
               </thead>
@@ -548,14 +572,18 @@ export default function SprintPlanning({
                     </td>
                     <td>{row.stage}</td>
                     <td>
-                      <label className="sprint-goal-toggle" title="Controls sprint predictability only. It does not change Delivery Plan expected completion.">
-                        <input
-                          type="checkbox"
-                          checked={row.isGoal}
-                          onChange={(event) => setGoal(row, event.target.checked)}
-                        />
-                        <span>{row.isGoal ? "Goal" : "No"}</span>
-                      </label>
+                      <select
+                        className="sprint-row-classification"
+                        value={row.classification}
+                        onChange={(event) =>
+                          setClassification(row, event.target.value)
+                        }
+                        title="Sprint reporting only. This does not change Delivery Plan expected completion."
+                      >
+                        <option value="goal">Goal</option>
+                        <option value="stretch">Stretch</option>
+                        <option value="other">Other</option>
+                      </select>
                     </td>
                     <td>
                       <div className="achievement-buttons">

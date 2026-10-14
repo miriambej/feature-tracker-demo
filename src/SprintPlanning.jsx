@@ -130,6 +130,8 @@ export default function SprintPlanning({
     lastFinishedSprint.match(/^(\d{2}Q\d)/)?.[1] || "26Q2",
   );
   const [showHidden, setShowHidden] = useState(false);
+  const [stretchFeatureId, setStretchFeatureId] = useState("");
+  const [stretchStage, setStretchStage] = useState("UAT");
 
   useEffect(() => {
     if (!sprintOptions.includes(sprint)) setSprint(lastFinishedSprint);
@@ -238,6 +240,46 @@ export default function SprintPlanning({
       ...current,
       [row.prefKey]: displayMode,
     }));
+  }
+
+  function addCompletedStretch() {
+    const feature = featureById.get(stretchFeatureId);
+    if (!feature || !sprint || !stretchStage) return;
+    const alreadyExists = allocations.some(
+      (allocation) =>
+        allocation.featureId === feature.id &&
+        normSprint(allocation.sprint) === normSprint(sprint) &&
+        keyText(allocation.stage || allocation.sourceStage) === keyText(stretchStage),
+    );
+    if (alreadyExists) return;
+
+    const allocationId =
+      globalThis.crypto?.randomUUID?.() ||
+      `stretch-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    setAllocations((current) => [
+      ...current,
+      {
+        id: allocationId,
+        featureId: feature.id,
+        featureIds: [feature.id],
+        matchedFeatureIds: [feature.id],
+        featureName: feature.feature_name,
+        actualFeatureName: feature.feature_name,
+        planningGroup: feature.workspace || feature.feature_name,
+        workspace: feature.workspace || "",
+        workspaceName: feature.workspace || "",
+        stage: stretchStage,
+        sourceStage: stretchStage,
+        sprint,
+        owner: "",
+        days: 0,
+        isStageComplete: false,
+        achievementStatus: "achieved",
+        isUnplannedStretch: true,
+      },
+    ]);
+    setStretchFeatureId("");
   }
 
   function toneFor(row) {
@@ -378,6 +420,42 @@ export default function SprintPlanning({
               />
               Show hidden
             </label>
+          </div>
+          <div className="sprint-planning-add-stretch">
+            <b>Record unplanned completed work</b>
+            <select
+              value={stretchFeatureId}
+              onChange={(event) => setStretchFeatureId(event.target.value)}
+            >
+              <option value="">Select feature</option>
+              {[...features]
+                .sort((a, b) =>
+                  String(a.feature_name || "").localeCompare(
+                    String(b.feature_name || ""),
+                  ),
+                )
+                .map((feature) => (
+                  <option key={feature.id} value={feature.id}>
+                    {feature.feature_name}
+                  </option>
+                ))}
+            </select>
+            <select
+              value={stretchStage}
+              onChange={(event) => setStretchStage(event.target.value)}
+            >
+              {STAGE_ORDER.map((stage) => (
+                <option key={stage} value={stage}>{stage}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="primary"
+              disabled={!stretchFeatureId || !sprint}
+              onClick={addCompletedStretch}
+            >
+              Add completed stretch
+            </button>
           </div>
           <div className="sprint-planning-table-wrap">
             <table className="compact-table sprint-planning-table">

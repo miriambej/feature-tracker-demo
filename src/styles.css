@@ -294,3 +294,85 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
   width:18%;
   white-space:nowrap;
 }
+
+
+/* Sprint Planning */
+.sprint-planning-dashboard{display:grid;gap:16px}
+.sprint-planning-filters{display:flex;gap:10px;align-items:end}
+.sprint-planning-filters label{display:grid;gap:4px;font-size:11px;font-weight:700}
+.sprint-planning-grid{display:grid;grid-template-columns:minmax(520px,1.05fr) minmax(620px,1fr);gap:16px;align-items:start}
+.sprint-planning-side{display:grid;gap:16px}
+.sprint-planning-table-wrap{overflow:auto}
+.sprint-planning-table{width:100%}
+.sprint-planning-table th:nth-child(1){width:34px}
+.sprint-planning-table th:nth-child(2){width:50px}
+.sprint-planning-table th:nth-child(4){width:170px}
+.sprint-planning-table th:nth-child(5){width:118px}
+.sprint-planning-row td{transition:background .12s ease}
+.sprint-planning-row td:nth-child(3),
+.sprint-planning-row td:nth-child(4){font-weight:650}
+.sprint-planning-row td:nth-child(3) small{display:block;margin-top:2px;font-size:9px;opacity:.68}
+.sprint-planning-row.goal-pending td:nth-child(3),
+.sprint-planning-row.goal-pending td:nth-child(4){background:#ffd91a!important;color:#5b5200!important}
+.sprint-planning-row.goal-achieved td:nth-child(3),
+.sprint-planning-row.goal-achieved td:nth-child(4){background:#dff6dd!important;color:#107c10!important}
+.sprint-planning-row.stretch-achieved td:nth-child(3),
+.sprint-planning-row.stretch-achieved td:nth-child(4){background:#107c10!important;color:#fff!important}
+.sprint-planning-row.not-achieved td:nth-child(3),
+.sprint-planning-row.not-achieved td:nth-child(4){background:#fde7e9!important;color:#a4262c!important}
+.sprint-planning-row.hidden-row{opacity:.48}
+.sprint-row-display{width:38px;min-width:38px;padding:3px 4px;font-size:10px;font-weight:800}
+.sprint-row-display.feature{border-color:#4f8cff}
+.sprint-row-display.group{border-color:#22c55e}
+.sprint-row-display.hidden{border-color:#94a3b8}
+.achievement-buttons{display:flex;gap:3px}
+.achievement-buttons button{width:28px;height:26px;padding:0;border-radius:7px;font-weight:900}
+.achievement-buttons button.active{outline:2px solid currentColor;outline-offset:1px}
+.show-hidden-toggle{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700}
+.predictability-table{min-width:760px}
+.predictability-table th,.predictability-table td{text-align:center;white-space:nowrap}
+.predictability-table th:first-child,.predictability-table td:first-child{text-align:left}
+.fist-five-panel{max-width:320px}
+.fist-five-panel input{width:80px}
+.fist-five-summary{display:flex;gap:18px;margin-top:10px;font-size:12px}
+.completed-features-panel{max-width:920px}
+.completed-features-panel input[type="date"]{min-width:135px}
+.mini-count{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:999px;background:rgba(99,102,241,.12);font-weight:800}
+
+/* Delivery Plan colour language: yellow goal, green achieved, red missed */
+.allocation-chip.goal{
+  background:rgba(255,217,26,.16)!important;
+  border-color:rgba(255,217,26,.52)!important;
+  color:#fff3a3!important
+}
+.allocation-chip.goal small{color:#fde68a!important}
+.allocation-chip.goal-achieved{
+  background:rgba(34,197,94,.14)!important;
+  border-color:rgba(34,197,94,.42)!important;
+  color:#dcfce7!important
+}
+.allocation-chip.goal-achieved small{color:#86efac!important}
+.allocation-chip.stretch-achieved{
+  background:rgba(22,124,16,.34)!important;
+  border-color:rgba(34,197,94,.68)!important;
+  color:#f0fdf4!important
+}
+.allocation-chip.stretch-achieved small{color:#bbf7d0!important}
+.allocation-chip.not-achieved{
+  background:rgba(220,38,38,.16)!important;
+  border-color:rgba(248,113,113,.5)!important;
+  color:#fee2e2!important
+}
+.allocation-chip.not-achieved small{color:#fca5a5!important}
+.app.light .allocation-chip.goal{background:#fff4b8!important;border-color:#e6c900!important;color:#5b5200!important}
+.app.light .allocation-chip.goal small{color:#6b5d00!important}
+.app.light .allocation-chip.goal-achieved{background:#dff6dd!important;border-color:#9fd89f!important;color:#107c10!important}
+.app.light .allocation-chip.goal-achieved small{color:#107c10!important}
+.app.light .allocation-chip.stretch-achieved{background:#107c10!important;border-color:#0b6a0b!important;color:#fff!important}
+.app.light .allocation-chip.stretch-achieved small{color:#e6ffe6!important}
+.app.light .allocation-chip.not-achieved{background:#fde7e9!important;border-color:#f3b4ba!important;color:#a4262c!important}
+.app.light .allocation-chip.not-achieved small{color:#a4262c!important}
+
+@media(max-width:1250px){
+  .sprint-planning-grid{grid-template-columns:1fr}
+}

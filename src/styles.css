@@ -316,6 +316,11 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
   border-radius:12px;
   overflow:hidden;
 }
+.sprint-stretch-feature-picker{display:grid;gap:6px;min-width:0}
+.sprint-stretch-feature-picker input,
+.sprint-stretch-feature-picker select{width:100%;min-width:0}
+.sprint-row-name{font-weight:500}
+.sprint-row-display{font-weight:700!important}
 .sprint-planning-add-stretch>b{
   grid-column:1/-1;
   font-size:12px;

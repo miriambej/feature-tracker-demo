@@ -19,6 +19,29 @@ const STAGE_ORDER = [
   "UAT Dev Support",
 ];
 
+const SPRINT_STAGE_OPTIONS = [
+  "Requirement",
+  "Deployment",
+  "Build",
+  "SIT",
+  "BA Sign off",
+  "UAT",
+];
+
+function sprintStage(stage) {
+  const value = normText(stage).toLowerCase();
+  if (value === "requirement" || value === "tech feasibility")
+    return "Requirement";
+  if (value.includes("deploy")) return "Deployment";
+  if (value.includes("build")) return "Build";
+  if (value.includes("sit") && value.includes("ba") && value.includes("sign"))
+    return "BA Sign off";
+  if (value.includes("sit")) return "SIT";
+  if (value.includes("ba") && value.includes("sign")) return "BA Sign off";
+  if (value.includes("uat")) return "UAT";
+  return normText(stage || "Not set");
+}
+
 function normSprint(value) {
   return String(value || "").trim().toUpperCase();
 }
@@ -174,13 +197,15 @@ export default function SprintPlanning({
       .forEach((allocation) => {
         const featureName = allocationFeatureName(allocation);
         const workspace = allocationWorkspace(allocation);
-        const stage = normText(allocation.stage || allocation.sourceStage || "Not set");
+        const rawStage = normText(
+          allocation.stage || allocation.sourceStage || "Not set",
+        );
+        const stage = sprintStage(rawStage);
         const goal = Boolean(allocation.isStageComplete);
         const key = [
           keyText(featureName),
           keyText(workspace),
           keyText(stage),
-          goal ? "goal" : "planned",
         ].join("||");
         if (!groups.has(key)) {
           groups.set(key, {
@@ -192,12 +217,19 @@ export default function SprintPlanning({
             isStretch: false,
             allocationIds: [],
             statuses: [],
+            owners: [],
+            sourceStages: [],
           });
         }
         const group = groups.get(key);
         group.allocationIds.push(allocation.id);
         group.statuses.push(outcomeStatus(allocation));
+        group.isGoal = group.isGoal || goal;
         if (allocation.isUnplannedStretch) group.isStretch = true;
+        const owner = normText(allocation.owner);
+        if (owner && !group.owners.includes(owner)) group.owners.push(owner);
+        if (rawStage && !group.sourceStages.includes(rawStage))
+          group.sourceStages.push(rawStage);
       });
     const goalOverrides = sprintPlanningMeta[sprintId]?.goalOverrides || {};
     const classificationOverrides =
@@ -296,7 +328,8 @@ export default function SprintPlanning({
       (allocation) =>
         allocation.featureId === feature.id &&
         normSprint(allocation.sprint) === normSprint(sprint) &&
-        keyText(allocation.stage || allocation.sourceStage) === keyText(stretchStage),
+        keyText(sprintStage(allocation.stage || allocation.sourceStage)) ===
+          keyText(stretchStage),
     );
     if (alreadyExists) return;
 
@@ -520,7 +553,7 @@ export default function SprintPlanning({
               value={stretchStage}
               onChange={(event) => setStretchStage(event.target.value)}
             >
-              {STAGE_ORDER.map((stage) => (
+              {SPRINT_STAGE_OPTIONS.map((stage) => (
                 <option key={stage} value={stage}>{stage}</option>
               ))}
             </select>
@@ -557,20 +590,34 @@ export default function SprintPlanning({
                         className={"sprint-row-display " + row.displayMode}
                         value={row.displayMode}
                         onChange={(event) => setDisplay(row, event.target.value)}
-                        title="F = feature, G = workspace/group, – = hide"
+                        title="Choose whether this row shows the feature name, group name, or is hidden"
                       >
-                        <option value="feature">F</option>
-                        <option value="group">G</option>
-                        <option value="hidden">–</option>
+                        <option value="feature">Feature</option>
+                        <option value="group">Group</option>
+                        <option value="hidden">Hide</option>
                       </select>
                     </td>
-                    <td>
+                    <td
+                      title={
+                        row.owners.length
+                          ? `Worked on by: ${row.owners.join(", ")}`
+                          : "No person recorded for this work"
+                      }
+                    >
                       <b>{row.displayMode === "group" ? row.workspace : row.featureName}</b>
                       {row.displayMode === "feature" && row.workspace !== row.featureName && (
                         <small>{row.workspace}</small>
                       )}
                     </td>
-                    <td>{row.stage}</td>
+                    <td
+                      title={
+                        row.sourceStages.length > 1
+                          ? `Consolidated from: ${row.sourceStages.join(", ")}`
+                          : row.sourceStages[0] || row.stage
+                      }
+                    >
+                      {row.stage}
+                    </td>
                     <td>
                       <select
                         className="sprint-row-classification"

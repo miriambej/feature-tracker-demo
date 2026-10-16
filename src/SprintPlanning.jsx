@@ -154,6 +154,7 @@ export default function SprintPlanning({
   );
   const [showHidden, setShowHidden] = useState(false);
   const [stretchFeatureId, setStretchFeatureId] = useState("");
+  const [stretchSearch, setStretchSearch] = useState("");
   const [stretchStage, setStretchStage] = useState("UAT");
   const [tooltip, setTooltip] = useState(null);
 
@@ -292,6 +293,37 @@ export default function SprintPlanning({
     (row) => showHidden || row.displayMode !== "hidden",
   );
 
+  const openFeaturesForStretch = useMemo(() => {
+    const search = keyText(stretchSearch);
+    return features
+      .filter((feature) => {
+        const finalStage = getFinalStage(feature);
+        const finalIndex = stageIndex(finalStage);
+        const finalStageCompleted = allocations.some(
+          (allocation) =>
+            allocation.featureId === feature.id &&
+            outcomeStatus(allocation) === "achieved" &&
+            stageIndex(allocation.stage) >= finalIndex,
+        );
+        const explicitlyClosed =
+          feature.status === "uat_done" ||
+          feature.status === "closed" ||
+          feature.status === "completed";
+        if (finalStageCompleted || explicitlyClosed) return false;
+
+        if (!search) return true;
+        return (
+          keyText(feature.feature_name).includes(search) ||
+          keyText(feature.workspace).includes(search)
+        );
+      })
+      .sort((a, b) =>
+        String(a.feature_name || "").localeCompare(
+          String(b.feature_name || ""),
+        ),
+      );
+  }, [features, allocations, getFinalStage, stretchSearch]);
+
   function setRowOutcome(row, status) {
     setAllocations((current) =>
       current.map((allocation) =>
@@ -379,6 +411,7 @@ export default function SprintPlanning({
       },
     ]);
     setStretchFeatureId("");
+    setStretchSearch("");
   }
 
   function toneFor(row) {
@@ -551,23 +584,37 @@ export default function SprintPlanning({
           </div>
           <div className="sprint-planning-add-stretch">
             <b>Record unplanned completed work</b>
-            <select
-              value={stretchFeatureId}
-              onChange={(event) => setStretchFeatureId(event.target.value)}
-            >
-              <option value="">Select feature</option>
-              {[...features]
-                .sort((a, b) =>
-                  String(a.feature_name || "").localeCompare(
-                    String(b.feature_name || ""),
-                  ),
-                )
-                .map((feature) => (
+            <div className="sprint-stretch-feature-picker">
+              <input
+                type="search"
+                value={stretchSearch}
+                onChange={(event) => {
+                  setStretchSearch(event.target.value);
+                  setStretchFeatureId("");
+                }}
+                placeholder="Search feature or group..."
+                aria-label="Search open features"
+              />
+              <select
+                value={stretchFeatureId}
+                onChange={(event) => setStretchFeatureId(event.target.value)}
+              >
+                <option value="">
+                  {openFeaturesForStretch.length
+                    ? `Select open feature (${openFeaturesForStretch.length})`
+                    : "No open features found"}
+                </option>
+                {openFeaturesForStretch.map((feature) => (
                   <option key={feature.id} value={feature.id}>
                     {feature.feature_name}
+                    {feature.workspace &&
+                    feature.workspace !== feature.feature_name
+                      ? ` — ${feature.workspace}`
+                      : ""}
                   </option>
                 ))}
-            </select>
+              </select>
+            </div>
             <select
               value={stretchStage}
               onChange={(event) => setStretchStage(event.target.value)}
@@ -643,7 +690,9 @@ export default function SprintPlanning({
                       }
                       onBlur={() => setTooltip(null)}
                     >
-                      <b>{row.displayMode === "group" ? row.workspace : row.featureName}</b>
+                      <span className="sprint-row-name">
+                        {row.displayMode === "group" ? row.workspace : row.featureName}
+                      </span>
                       {row.displayMode === "feature" && row.workspace !== row.featureName && (
                         <small>{row.workspace}</small>
                       )}

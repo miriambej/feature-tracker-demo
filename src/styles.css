@@ -300,9 +300,10 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .sprint-planning-dashboard{display:grid;gap:16px}
 .sprint-planning-filters{display:flex;gap:10px;align-items:end}
 .sprint-planning-filters label{display:grid;gap:4px;font-size:11px;font-weight:700}
-.sprint-planning-grid{display:grid;grid-template-columns:minmax(520px,1.05fr) minmax(620px,1fr);gap:16px;align-items:start}
+.sprint-planning-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:16px;align-items:start;min-width:0}
+.sprint-planning-work-panel,.sprint-planning-side,.sprint-planning-side>.panel{min-width:0;max-width:100%}
 .sprint-planning-side{display:grid;gap:16px}
-.sprint-planning-table-wrap{overflow:auto}
+.sprint-planning-table-wrap{width:100%;max-width:100%;overflow:auto}
 .sprint-planning-table{width:100%;min-width:760px}
 .sprint-planning-add-stretch{
   display:grid;
@@ -365,7 +366,7 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .sprint-planning-row.not-achieved td:nth-child(3),
 .sprint-planning-row.not-achieved td:nth-child(4){background:#fde7e9!important;color:#a4262c!important}
 .sprint-planning-row.hidden-row{opacity:.48}
-.sprint-row-display{width:38px;min-width:38px;padding:3px 4px;font-size:10px;font-weight:800}
+.sprint-row-display{box-sizing:border-box;width:46px!important;min-width:46px!important;height:30px!important;padding:3px 16px 3px 6px!important;font-size:12px!important;line-height:20px!important;font-weight:900!important;text-align:center!important;text-align-last:center!important;overflow:visible!important}
 .sprint-row-display.feature{border-color:#4f8cff}
 .sprint-row-display.group{border-color:#22c55e}
 .sprint-row-display.hidden{border-color:#94a3b8}
@@ -373,7 +374,9 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .achievement-buttons button{width:28px;height:26px;padding:0;border-radius:7px;font-weight:900}
 .achievement-buttons button.active{outline:2px solid currentColor;outline-offset:1px}
 .show-hidden-toggle{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700}
-.predictability-table{min-width:760px}
+.sprint-planning-side .panel{overflow:hidden}
+.sprint-planning-side .sprint-planning-table-wrap{overflow-x:auto;overscroll-behavior-x:contain}
+.predictability-table{width:100%;min-width:760px}
 .predictability-table th,.predictability-table td{text-align:center;white-space:nowrap}
 .predictability-table th:first-child,.predictability-table td:first-child{text-align:left}
 .fist-five-panel{max-width:320px}

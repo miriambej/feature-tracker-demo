@@ -155,6 +155,7 @@ export default function SprintPlanning({
   const [showHidden, setShowHidden] = useState(false);
   const [stretchFeatureId, setStretchFeatureId] = useState("");
   const [stretchStage, setStretchStage] = useState("UAT");
+  const [tooltip, setTooltip] = useState(null);
 
   useEffect(() => {
     if (!sprintOptions.includes(sprint)) setSprint(lastFinishedSprint);
@@ -319,6 +320,24 @@ export default function SprintPlanning({
         },
       },
     }));
+  }
+
+  function showTooltip(event, heading, badge, entries) {
+    const items = (Array.isArray(entries) ? entries : [entries])
+      .map((entry) => normText(entry))
+      .filter(Boolean);
+    if (!items.length) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTooltip({
+      heading,
+      badge,
+      items,
+      left: Math.min(
+        window.innerWidth - 170,
+        Math.max(170, rect.left + rect.width / 2),
+      ),
+      top: Math.max(12, rect.top - 10),
+    });
   }
 
   function addCompletedStretch() {
@@ -590,19 +609,39 @@ export default function SprintPlanning({
                         className={"sprint-row-display " + row.displayMode}
                         value={row.displayMode}
                         onChange={(event) => setDisplay(row, event.target.value)}
-                        title="Choose whether this row shows the feature name, group name, or is hidden"
+                        aria-label="Show feature, group, or hide row"
+                        title="F = feature, G = group, – = hide"
                       >
-                        <option value="feature">Feature</option>
-                        <option value="group">Group</option>
-                        <option value="hidden">Hide</option>
+                        <option value="feature">F</option>
+                        <option value="group">G</option>
+                        <option value="hidden">–</option>
                       </select>
                     </td>
                     <td
-                      title={
-                        row.owners.length
-                          ? `Worked on by: ${row.owners.join(", ")}`
-                          : "No person recorded for this work"
+                      className="capacity-hover-target"
+                      tabIndex="0"
+                      onMouseEnter={(event) =>
+                        showTooltip(
+                          event,
+                          "Worked on by",
+                          row.stage,
+                          row.owners.length
+                            ? row.owners
+                            : ["No person recorded for this work"],
+                        )
                       }
+                      onMouseLeave={() => setTooltip(null)}
+                      onFocus={(event) =>
+                        showTooltip(
+                          event,
+                          "Worked on by",
+                          row.stage,
+                          row.owners.length
+                            ? row.owners
+                            : ["No person recorded for this work"],
+                        )
+                      }
+                      onBlur={() => setTooltip(null)}
                     >
                       <b>{row.displayMode === "group" ? row.workspace : row.featureName}</b>
                       {row.displayMode === "feature" && row.workspace !== row.featureName && (
@@ -610,11 +649,30 @@ export default function SprintPlanning({
                       )}
                     </td>
                     <td
-                      title={
-                        row.sourceStages.length > 1
-                          ? `Consolidated from: ${row.sourceStages.join(", ")}`
-                          : row.sourceStages[0] || row.stage
+                      className="capacity-hover-target"
+                      tabIndex="0"
+                      onMouseEnter={(event) =>
+                        showTooltip(
+                          event,
+                          "Sprint stage",
+                          row.stage,
+                          row.sourceStages.length
+                            ? row.sourceStages
+                            : [row.stage],
+                        )
                       }
+                      onMouseLeave={() => setTooltip(null)}
+                      onFocus={(event) =>
+                        showTooltip(
+                          event,
+                          "Sprint stage",
+                          row.stage,
+                          row.sourceStages.length
+                            ? row.sourceStages
+                            : [row.stage],
+                        )
+                      }
+                      onBlur={() => setTooltip(null)}
                     >
                       {row.stage}
                     </td>
@@ -736,6 +794,27 @@ export default function SprintPlanning({
           </div>
         </div>
       </div>
+
+      {tooltip && (
+        <div
+          className="modern-capacity-tooltip"
+          role="tooltip"
+          style={{ left: tooltip.left, top: tooltip.top }}
+        >
+          <div className="modern-tooltip-heading">
+            <b>{tooltip.heading}</b>
+            <span>{tooltip.badge}</span>
+          </div>
+          <div className="modern-tooltip-list">
+            {tooltip.items.map((entry, index) => (
+              <div className="modern-tooltip-body" key={`${entry}-${index}`}>
+                <span className="modern-tooltip-dot" />
+                <span>{entry}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="panel completed-features-panel">
         <div className="panel-top">

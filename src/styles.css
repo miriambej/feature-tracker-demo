@@ -328,13 +328,17 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
   width:100%;
 }
 .sprint-planning-table th:nth-child(2),
-.sprint-planning-table td:nth-child(2){width:108px;min-width:108px}
+.sprint-planning-table td:nth-child(2){width:58px;min-width:58px}
 .sprint-row-display{
-  width:96px!important;
-  min-width:96px!important;
-  padding:4px 24px 4px 8px!important;
-  font-size:10px!important;
-  font-weight:800;
+  width:46px!important;
+  min-width:46px!important;
+  height:30px;
+  padding:4px 18px 4px 8px!important;
+  font-size:12px!important;
+  line-height:1!important;
+  font-weight:900;
+  text-align:center;
+  text-align-last:center;
 }
 @media (max-width: 900px){
   .sprint-planning-add-stretch{

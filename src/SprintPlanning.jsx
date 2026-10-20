@@ -493,7 +493,7 @@ export default function SprintPlanning({
     }));
   }
 
-  const completedGroups = useMemo(() => {
+  const completedFeatures = useMemo(() => {
     const featureIsClosed = (feature) =>
       ["uat_done", "closed", "completed"].includes(
         keyText(feature?.status).replace(/\s+/g, "_"),
@@ -519,6 +519,8 @@ export default function SprintPlanning({
         finalAchievementSprintByFeatureId.set(feature.id, completed.at(-1));
     });
 
+    const rows = [];
+
     const groups = new Map();
     features.forEach((feature) => {
       const groupName = normText(
@@ -528,35 +530,76 @@ export default function SprintPlanning({
       groups.get(groupName).push(feature);
     });
 
-    return Array.from(groups.entries())
-      .map(([groupName, groupFeatures]) => {
-        const everyFeatureComplete = groupFeatures.every(
-          (feature) =>
-            featureIsClosed(feature) ||
-            finalAchievementSprintByFeatureId.has(feature.id),
+    Array.from(groups.entries()).forEach(([groupName, groupFeatures]) => {
+      const everyFeatureComplete = groupFeatures.every(
+        (feature) =>
+          featureIsClosed(feature) ||
+          finalAchievementSprintByFeatureId.has(feature.id),
+      );
+      if (!everyFeatureComplete) return;
+
+      const quarterCompletionSprints = groupFeatures
+        .map((feature) => finalAchievementSprintByFeatureId.get(feature.id))
+        .filter((sprintId) => sprintId?.startsWith(quarter))
+        .sort();
+
+      if (!quarterCompletionSprints.length) return;
+
+      rows.push({
+        name: groupName,
+        sprintId: quarterCompletionSprints.at(-1),
+        featureCount: groupFeatures.length,
+        closureKey: `group:${keyText(groupName)}`,
+      });
+    });
+
+    const standaloneByName = new Map();
+    allocations
+      .filter(
+        (allocation) =>
+          !allocation.featureId &&
+          !allocation.featureIds?.length &&
+          !allocation.matchedFeatureIds?.length &&
+          outcomeStatus(allocation) === "achieved" &&
+          normSprint(allocation.sprint).startsWith(quarter),
+      )
+      .forEach((allocation) => {
+        const name = normText(
+          allocation.actualFeatureName ||
+            allocation.featureName ||
+            allocation.planningGroup ||
+            allocation.workspaceName ||
+            allocation.workspace ||
+            "Planning item",
         );
-        if (!everyFeatureComplete) return null;
+        const key = keyText(name);
+        const sprintId = normSprint(allocation.sprint);
+        const current = standaloneByName.get(key);
+        if (!current || sprintId > current.sprintId) {
+          standaloneByName.set(key, {
+            name,
+            sprintId,
+            featureCount: 1,
+            closureKey: `standalone:${key}`,
+          });
+        }
+      });
 
-        const quarterCompletionSprints = groupFeatures
-          .map((feature) => finalAchievementSprintByFeatureId.get(feature.id))
-          .filter((sprintId) => sprintId?.startsWith(quarter))
-          .sort();
+    standaloneByName.forEach((row) => rows.push(row));
 
-        if (!quarterCompletionSprints.length) return null;
-
-        const sprintId = quarterCompletionSprints.at(-1);
-        return {
-          groupName,
-          sprintId,
-          featureCount: groupFeatures.length,
-          closureKey: `group:${keyText(groupName)}`,
-        };
-      })
-      .filter(Boolean)
+    return rows
+      .filter(
+        (row, index, all) =>
+          all.findIndex(
+            (candidate) =>
+              keyText(candidate.name) === keyText(row.name) &&
+              candidate.sprintId === row.sprintId,
+          ) === index,
+      )
       .sort(
         (a, b) =>
           a.sprintId.localeCompare(b.sprintId) ||
-          a.groupName.localeCompare(b.groupName),
+          a.name.localeCompare(b.name),
       );
   }, [features, allocations, getFinalStage, quarter]);
 
@@ -901,20 +944,20 @@ export default function SprintPlanning({
       <div className="panel completed-features-panel">
         <div className="panel-top">
           <div>
-            <h3>Groups completed</h3>
+            <h3>Feature completed</h3>
             <p className="muted">
-              All groups completed in {quarter}, regardless of which sprint is selected above.
+              All completed features/groups in {quarter}, regardless of which sprint is selected above.
             </p>
           </div>
-          <span className="mini-count">{completedGroups.length}</span>
+          <span className="mini-count">{completedFeatures.length}</span>
         </div>
         <div className="sprint-planning-table-wrap">
           <table className="compact-table">
-            <thead><tr><th>Group</th><th>Completed sprint</th><th>Close in DevOps</th></tr></thead>
+            <thead><tr><th>Feature</th><th>Completed sprint</th><th>Close in DevOps</th></tr></thead>
             <tbody>
-              {completedGroups.map(({ groupName, sprintId, closureKey }) => (
+              {completedFeatures.map(({ name, sprintId, closureKey }) => (
                 <tr key={closureKey}>
-                  <td>{groupName}</td>
+                  <td>{name}</td>
                   <td>{sprintId}</td>
                   <td>
                     <input
@@ -930,8 +973,8 @@ export default function SprintPlanning({
                   </td>
                 </tr>
               ))}
-              {!completedGroups.length && (
-                <tr><td colSpan="3">No groups completed in {quarter} yet.</td></tr>
+              {!completedFeatures.length && (
+                <tr><td colSpan="3">No completed features in {quarter} yet.</td></tr>
               )}
             </tbody>
           </table>

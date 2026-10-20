@@ -7171,15 +7171,13 @@ function DeliveryPlan({
               <option key={o}>{o}</option>
             ))}
           </select>
-          <select
+          <SearchableSingleFilter
+            label="Workspace"
+            options={allFeatureWorkspaces}
             value={planWorkspaceFilter}
-            onChange={(e) => setPlanWorkspaceFilter(e.target.value)}
-          >
-            <option value="ALL">All Workspaces</option>
-            {allFeatureWorkspaces.map((w) => (
-              <option key={w}>{w}</option>
-            ))}
-          </select>
+            onChange={setPlanWorkspaceFilter}
+            allLabel="All Workspaces"
+          />
         </div>
       </div>
       <div className="panel planning-controls">

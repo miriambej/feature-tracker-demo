@@ -554,36 +554,66 @@ export default function SprintPlanning({
     });
 
     const standaloneByName = new Map();
-    allocations
-      .filter(
-        (allocation) =>
-          !allocation.featureId &&
-          !allocation.featureIds?.length &&
-          !allocation.matchedFeatureIds?.length &&
-          outcomeStatus(allocation) === "achieved" &&
-          normSprint(allocation.sprint).startsWith(quarter),
-      )
-      .forEach((allocation) => {
-        const name = normText(
-          allocation.actualFeatureName ||
-            allocation.featureName ||
-            allocation.planningGroup ||
-            allocation.workspaceName ||
-            allocation.workspace ||
-            "Planning item",
-        );
-        const key = keyText(name);
-        const sprintId = normSprint(allocation.sprint);
-        const current = standaloneByName.get(key);
-        if (!current || sprintId > current.sprintId) {
-          standaloneByName.set(key, {
-            name,
-            sprintId,
-            featureCount: 1,
-            closureKey: `standalone:${key}`,
-          });
-        }
+    const standaloneAllocations = allocations.filter(
+      (allocation) =>
+        !allocation.featureId &&
+        !allocation.featureIds?.length &&
+        !allocation.matchedFeatureIds?.length,
+    );
+
+    const standaloneGroups = new Map();
+    standaloneAllocations.forEach((allocation) => {
+      const name = normText(
+        allocation.actualFeatureName ||
+          allocation.featureName ||
+          allocation.planningGroup ||
+          allocation.workspaceName ||
+          allocation.workspace ||
+          "Planning item",
+      );
+      const key = keyText(name);
+      if (!standaloneGroups.has(key))
+        standaloneGroups.set(key, { name, allocations: [] });
+      standaloneGroups.get(key).allocations.push(allocation);
+    });
+
+    standaloneGroups.forEach(({ name, allocations: itemAllocations }, key) => {
+      const achievedStages = itemAllocations
+        .filter((allocation) => outcomeStatus(allocation) === "achieved")
+        .map((allocation) => ({
+          sprintId: normSprint(allocation.sprint),
+          stage: sprintStage(allocation.stage || allocation.sourceStage),
+        }))
+        .filter((row) => row.sprintId?.startsWith(quarter));
+
+      if (!achievedStages.length) return;
+
+      const highestAchievedIndex = Math.max(
+        ...achievedStages.map((row) => stageIndex(row.stage)),
+      );
+      const inferredFinalIndex = Math.max(
+        ...itemAllocations.map((allocation) =>
+          stageIndex(sprintStage(allocation.stage || allocation.sourceStage)),
+        ),
+      );
+
+      if (highestAchievedIndex < inferredFinalIndex) return;
+
+      const sprintId = achievedStages
+        .filter((row) => stageIndex(row.stage) >= inferredFinalIndex)
+        .map((row) => row.sprintId)
+        .sort()
+        .at(-1);
+
+      if (!sprintId) return;
+
+      standaloneByName.set(key, {
+        name,
+        sprintId,
+        featureCount: 1,
+        closureKey: `standalone:${key}`,
       });
+    });
 
     standaloneByName.forEach((row) => rows.push(row));
 
@@ -944,7 +974,7 @@ export default function SprintPlanning({
       <div className="panel completed-features-panel">
         <div className="panel-top">
           <div>
-            <h3>Feature completed</h3>
+            <h3>Features completed</h3>
             <p className="muted">
               All completed features/groups in {quarter}, regardless of which sprint is selected above.
             </p>

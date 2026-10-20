@@ -121,19 +121,38 @@ export default function SprintPlanning({
     return map;
   }, [sprintDates]);
 
-  const lastFinishedSprint = useMemo(() => {
+  const defaultSprint = useMemo(() => {
     const now = new Date();
-    const candidates = sprintOptions
+    const dated = sprintOptions
       .map((sprintId) => {
-        const endValue = dateBySprint.get(sprintId)?.endDate;
-        const end = endValue
-          ? new Date(String(endValue).slice(0, 10) + "T23:59:59")
+        const dates = dateBySprint.get(sprintId) || {};
+        const start = dates.startDate
+          ? new Date(String(dates.startDate).slice(0, 10) + "T00:00:00")
           : null;
-        return { sprintId, end };
-      })
+        const end = dates.endDate
+          ? new Date(String(dates.endDate).slice(0, 10) + "T23:59:59")
+          : null;
+        return { sprintId, start, end };
+      });
+
+    const current = dated.find(
+      (item) =>
+        item.start &&
+        item.end &&
+        item.start <= now &&
+        now <= item.end,
+    );
+    if (current) return current.sprintId;
+
+    const latestFinished = dated
       .filter((item) => item.end && item.end < now)
-      .sort((a, b) => b.end - a.end);
-    return candidates[0]?.sprintId || sprintOptions[0] || "";
+      .sort((a, b) => b.end - a.end)[0];
+    if (latestFinished) return latestFinished.sprintId;
+
+    const nextUpcoming = dated
+      .filter((item) => item.start && item.start > now)
+      .sort((a, b) => a.start - b.start)[0];
+    return nextUpcoming?.sprintId || sprintOptions[0] || "";
   }, [sprintOptions, dateBySprint]);
 
   const quarterOptions = useMemo(
@@ -148,9 +167,9 @@ export default function SprintPlanning({
     [sprintOptions],
   );
 
-  const [sprint, setSprint] = useState(lastFinishedSprint);
+  const [sprint, setSprint] = useState(defaultSprint);
   const [quarter, setQuarter] = useState(
-    lastFinishedSprint.match(/^(\d{2}Q\d)/)?.[1] || "26Q2",
+    defaultSprint.match(/^(\d{2}Q\d)/)?.[1] || "26Q2",
   );
   const [showHidden, setShowHidden] = useState(false);
   const [stretchFeatureId, setStretchFeatureId] = useState("");
@@ -159,8 +178,8 @@ export default function SprintPlanning({
   const [tooltip, setTooltip] = useState(null);
 
   useEffect(() => {
-    if (!sprintOptions.includes(sprint)) setSprint(lastFinishedSprint);
-  }, [sprintOptions, sprint, lastFinishedSprint]);
+    if (!sprintOptions.includes(sprint)) setSprint(defaultSprint);
+  }, [sprintOptions, sprint, defaultSprint]);
 
   useEffect(() => {
     const sprintQuarter = sprint.match(/^(\d{2}Q\d)/)?.[1];
@@ -475,7 +494,12 @@ export default function SprintPlanning({
   }
 
   const completedGroups = useMemo(() => {
-    const completionByFeatureId = new Map();
+    const featureIsClosed = (feature) =>
+      ["uat_done", "closed", "completed"].includes(
+        keyText(feature?.status).replace(/\s+/g, "_"),
+      );
+
+    const completionSprintByFeatureId = new Map();
 
     features.forEach((feature) => {
       const finalStage = getFinalStage(feature);
@@ -490,28 +514,33 @@ export default function SprintPlanning({
         .map((allocation) => normSprint(allocation.sprint))
         .filter(Boolean)
         .sort();
-      if (completed.length) completionByFeatureId.set(feature.id, completed[0]);
+
+      if (completed.length)
+        completionSprintByFeatureId.set(feature.id, completed.at(-1));
     });
 
     const groups = new Map();
     features.forEach((feature) => {
-      const groupName = normText(feature.workspace || feature.feature_name || "Unknown");
+      const groupName = normText(
+        feature.workspace || feature.feature_name || "Unknown",
+      );
       if (!groups.has(groupName)) groups.set(groupName, []);
       groups.get(groupName).push(feature);
     });
 
     return Array.from(groups.entries())
       .map(([groupName, groupFeatures]) => {
-        const completionSprints = groupFeatures
-          .map((feature) => completionByFeatureId.get(feature.id))
-          .filter(Boolean);
-        if (
-          completionSprints.length !== groupFeatures.length ||
-          !completionSprints.length
-        )
-          return null;
-        const sprintId = completionSprints.slice().sort().at(-1);
-        if (!sprintId?.startsWith(quarter)) return null;
+        const allClosed = groupFeatures.every(featureIsClosed);
+        if (!allClosed) return null;
+
+        const quarterCompletionSprints = groupFeatures
+          .map((feature) => completionSprintByFeatureId.get(feature.id))
+          .filter((sprintId) => sprintId?.startsWith(quarter))
+          .sort();
+
+        if (!quarterCompletionSprints.length) return null;
+
+        const sprintId = quarterCompletionSprints.at(-1);
         return {
           groupName,
           sprintId,

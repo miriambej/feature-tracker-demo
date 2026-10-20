@@ -499,7 +499,7 @@ export default function SprintPlanning({
         keyText(feature?.status).replace(/\s+/g, "_"),
       );
 
-    const completionSprintByFeatureId = new Map();
+    const finalAchievementSprintByFeatureId = new Map();
 
     features.forEach((feature) => {
       const finalStage = getFinalStage(feature);
@@ -516,7 +516,7 @@ export default function SprintPlanning({
         .sort();
 
       if (completed.length)
-        completionSprintByFeatureId.set(feature.id, completed.at(-1));
+        finalAchievementSprintByFeatureId.set(feature.id, completed.at(-1));
     });
 
     const groups = new Map();
@@ -530,11 +530,15 @@ export default function SprintPlanning({
 
     return Array.from(groups.entries())
       .map(([groupName, groupFeatures]) => {
-        const allClosed = groupFeatures.every(featureIsClosed);
-        if (!allClosed) return null;
+        const everyFeatureComplete = groupFeatures.every(
+          (feature) =>
+            featureIsClosed(feature) ||
+            finalAchievementSprintByFeatureId.has(feature.id),
+        );
+        if (!everyFeatureComplete) return null;
 
         const quarterCompletionSprints = groupFeatures
-          .map((feature) => completionSprintByFeatureId.get(feature.id))
+          .map((feature) => finalAchievementSprintByFeatureId.get(feature.id))
           .filter((sprintId) => sprintId?.startsWith(quarter))
           .sort();
 

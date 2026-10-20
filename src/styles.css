@@ -320,11 +320,15 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
   padding:12px;
   border:1px solid var(--line);
   border-radius:12px;
-  overflow:hidden;
+  overflow:visible;
 }
-.sprint-stretch-feature-picker{display:grid;gap:6px;min-width:0}
-.sprint-stretch-feature-picker input,
-.sprint-stretch-feature-picker select{width:100%;min-width:0}
+.sprint-stretch-feature-picker{display:block;min-width:0}
+.sprint-stretch-feature-picker>summary{width:100%}
+.sprint-stretch-feature-picker .multi-select-menu{left:0;right:auto;width:min(420px,75vw);max-width:420px}
+.sprint-stretch-feature-picker .multi-select-search{width:100%;min-width:0}
+.sprint-stretch-options button{display:grid;gap:1px}
+.sprint-stretch-options button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sprint-stretch-options button small{margin:0;font-size:9px;opacity:.72}
 .sprint-row-name{font-weight:500}
 .sprint-row-display{font-weight:700!important}
 .sprint-planning-add-stretch>b{

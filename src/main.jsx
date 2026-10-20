@@ -236,7 +236,10 @@ function SearchableSingleFilter({
 }) {
   const [search, setSearch] = useState("");
   const filtered = options.filter((option) =>
-    keyText(option).includes(keyText(search)),
+    String(option || "")
+      .trim()
+      .toLowerCase()
+      .includes(String(search || "").trim().toLowerCase()),
   );
   return (
     <details className="multi-select-filter searchable-single-filter">

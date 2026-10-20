@@ -2929,6 +2929,8 @@ function DeliveryPlan({
   setSprintPlanningDisplay,
   completedFeatureClosures,
   setCompletedFeatureClosures,
+  completedFeatureComments,
+  setCompletedFeatureComments,
 }) {
   const sprintOptions = useMemo(() => {
     const fromData = Array.from(
@@ -4072,6 +4074,7 @@ function DeliveryPlan({
       sprintPlanningMeta,
       sprintPlanningDisplay,
       completedFeatureClosures,
+      completedFeatureComments,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -4305,6 +4308,7 @@ function DeliveryPlan({
         setSprintPlanningMeta(data.sprintPlanningMeta || {});
         setSprintPlanningDisplay(data.sprintPlanningDisplay || {});
         setCompletedFeatureClosures(data.completedFeatureClosures || {});
+        setCompletedFeatureComments(data.completedFeatureComments || {});
         setCustomSprints(restoredSprints);
         setImportDiagnostics([]);
         setSprint(nextSprint);
@@ -7752,6 +7756,7 @@ function App() {
   const [sprintPlanningMeta, setSprintPlanningMeta] = useState({});
   const [sprintPlanningDisplay, setSprintPlanningDisplay] = useState({});
   const [completedFeatureClosures, setCompletedFeatureClosures] = useState({});
+  const [completedFeatureComments, setCompletedFeatureComments] = useState({});
   const [mode, setMode] = useState("executive");
   const [theme, setTheme] = useState(
     () => localStorage.getItem("feature-tracker-theme") || "dark",
@@ -7783,6 +7788,7 @@ function App() {
         setSprintPlanningMeta(saved.sprintPlanningMeta || {});
         setSprintPlanningDisplay(saved.sprintPlanningDisplay || {});
         setCompletedFeatureClosures(saved.completedFeatureClosures || {});
+        setCompletedFeatureComments(saved.completedFeatureComments || {});
       }
     } catch {
     } finally {
@@ -7809,6 +7815,7 @@ function App() {
             sprintPlanningMeta,
             sprintPlanningDisplay,
             completedFeatureClosures,
+            completedFeatureComments,
           }),
         ),
       200,
@@ -7828,6 +7835,7 @@ function App() {
     sprintPlanningMeta,
     sprintPlanningDisplay,
     completedFeatureClosures,
+    completedFeatureComments,
     loaded,
   ]);
   useEffect(() => {
@@ -8226,6 +8234,8 @@ function App() {
           setSprintPlanningDisplay={setSprintPlanningDisplay}
           completedFeatureClosures={completedFeatureClosures}
           setCompletedFeatureClosures={setCompletedFeatureClosures}
+          completedFeatureComments={completedFeatureComments}
+          setCompletedFeatureComments={setCompletedFeatureComments}
         />
       )}{" "}
       {mode === "sprintPlanning" && (
@@ -8246,6 +8256,8 @@ function App() {
           setSprintPlanningDisplay={setSprintPlanningDisplay}
           completedFeatureClosures={completedFeatureClosures}
           setCompletedFeatureClosures={setCompletedFeatureClosures}
+          completedFeatureComments={completedFeatureComments}
+          setCompletedFeatureComments={setCompletedFeatureComments}
         />
       )}{" "}
       {mode === "sprintReview" && (

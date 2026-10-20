@@ -1084,7 +1084,12 @@ export default function SprintPlanning({
                     <input
                       className="completed-feature-comment"
                       type="text"
-                      value={completedFeatureComments?.[closureKey] || ""}
+                      value={
+                        completedFeatureComments?.[closureKey] ??
+                        (completedFeatureClosures[closureKey]
+                          ? ""
+                          : "Add Miriam to review")
+                      }
                       onChange={(event) =>
                         setCompletedFeatureComments((current) => ({
                           ...(current || {}),

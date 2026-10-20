@@ -54,6 +54,13 @@ function keyText(value) {
   return normText(value).toLowerCase();
 }
 
+function devOpsUserStoryUrl(userStoryId) {
+  const id = normText(userStoryId);
+  return id
+    ? `https://educationbi.visualstudio.com/Skilling%20for%20Recovery/_workitems/edit/${id}`
+    : "";
+}
+
 function stageIndex(stage) {
   const value = normText(stage).toLowerCase();
   const index = STAGE_ORDER.findIndex((item) => item.toLowerCase() === value);
@@ -545,10 +552,20 @@ export default function SprintPlanning({
 
       if (!quarterCompletionSprints.length) return;
 
+      const userStoryIds = Array.from(
+        new Set(
+          groupFeatures
+            .map((feature) =>
+              normText(feature.parentUserStoryId || feature.devOpsId),
+            )
+            .filter(Boolean),
+        ),
+      );
       rows.push({
         name: groupName,
         sprintId: quarterCompletionSprints.at(-1),
         featureCount: groupFeatures.length,
+        userStoryIds,
         closureKey: `group:${keyText(groupName)}`,
       });
     });
@@ -607,10 +624,20 @@ export default function SprintPlanning({
 
       if (!sprintId) return;
 
+      const userStoryIds = Array.from(
+        new Set(
+          itemAllocations
+            .map((allocation) =>
+              normText(allocation.parentUserStoryId || allocation.devOpsId),
+            )
+            .filter(Boolean),
+        ),
+      );
       standaloneByName.set(key, {
         name,
         sprintId,
         featureCount: 1,
+        userStoryIds,
         closureKey: `standalone:${key}`,
       });
     });
@@ -985,9 +1012,40 @@ export default function SprintPlanning({
           <table className="compact-table">
             <thead><tr><th>Feature</th><th>Completed sprint</th><th>Close in DevOps</th></tr></thead>
             <tbody>
-              {completedFeatures.map(({ name, sprintId, closureKey }) => (
+              {completedFeatures.map(
+                ({ name, sprintId, closureKey, userStoryIds = [] }) => (
                 <tr key={closureKey}>
-                  <td>{name}</td>
+                  <td>
+                    {userStoryIds.length === 1 ? (
+                      <a
+                        className="completed-feature-link"
+                        href={devOpsUserStoryUrl(userStoryIds[0])}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={`Open User Story ${userStoryIds[0]} in Azure DevOps`}
+                      >
+                        {name}
+                      </a>
+                    ) : (
+                      <>
+                        <span>{name}</span>
+                        {userStoryIds.length > 1 && (
+                          <div className="completed-feature-story-links">
+                            {userStoryIds.map((userStoryId) => (
+                              <a
+                                key={userStoryId}
+                                href={devOpsUserStoryUrl(userStoryId)}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                US {userStoryId}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </td>
                   <td>{sprintId}</td>
                   <td>
                     <input

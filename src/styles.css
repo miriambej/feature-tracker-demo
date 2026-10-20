@@ -400,6 +400,14 @@ table{font-size:12px}th{height:36px;padding:8px 10px;background:#1d2125;color:#9
 .completed-feature-story-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 .completed-feature-story-links a{font-size:10px;color:#4c9aff;text-decoration:none}
 .completed-feature-story-links a:hover{text-decoration:underline}
+.completed-feature-needs-action td{background:rgba(239,68,68,.04)}
+.completed-feature-close-missing{border-left:3px solid #ef4444}
+.completed-feature-close-missing input[type="date"]{border-color:#ef4444!important;box-shadow:0 0 0 2px rgba(239,68,68,.08)}
+.completed-feature-action-label{margin-top:4px;color:#ff8f8f;font-weight:700}
+.completed-feature-comment{width:100%;min-width:220px}
+.app.light .completed-feature-needs-action td{background:#fff5f5}
+.app.light .completed-feature-close-missing{border-left-color:#d13438}
+.app.light .completed-feature-action-label{color:#a4262c}
 .mini-count{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border-radius:999px;background:rgba(99,102,241,.12);font-weight:800}
 
 /* Delivery Plan colour language: yellow goal, green achieved, red missed */

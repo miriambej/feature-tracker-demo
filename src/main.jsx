@@ -227,6 +227,66 @@ function MultiSelectFilter({ label, options, values, onChange, allLabel }) {
   );
 }
 
+function SearchableSingleFilter({
+  label,
+  options,
+  value,
+  onChange,
+  allLabel,
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = options.filter((option) =>
+    keyText(option).includes(keyText(search)),
+  );
+  return (
+    <details className="multi-select-filter searchable-single-filter">
+      <summary>
+        <span className="multi-select-label">{label}</span>
+        <b>{value === "ALL" ? allLabel : value}</b>
+        <i aria-hidden="true" />
+      </summary>
+      <div className="multi-select-menu">
+        <div className="multi-select-menu-head">
+          <strong>Select {label.toLowerCase()}</strong>
+          <button
+            type="button"
+            onClick={() => {
+              onChange("ALL");
+              setSearch("");
+            }}
+          >
+            Show all
+          </button>
+        </div>
+        <input
+          className="multi-select-search"
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={`Search ${label.toLowerCase()}...`}
+          aria-label={`Search ${label.toLowerCase()}s`}
+        />
+        <div className="multi-select-options single-select-options">
+          {filtered.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className={value === option ? "selected" : ""}
+              onClick={() => {
+                onChange(option);
+                setSearch("");
+              }}
+            >
+              {option}
+            </button>
+          ))}
+          {!filtered.length && <small>No matching {label.toLowerCase()}s</small>}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function id() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 }
@@ -3055,10 +3115,18 @@ function DeliveryPlan({
           [
             ...features.map((f) => f.workspace),
             ...prodSupportFeatures.map((f) => f.workspace),
+            ...allocations.map((a) =>
+              normaliseWorkspaceName(
+                a.planningGroup ||
+                  a.workspace ||
+                  a.workspaceName ||
+                  (!allocationFeatureIds(a).length ? a.featureName : ""),
+              ),
+            ),
           ].filter(Boolean),
         ),
       ).sort(),
-    [features, prodSupportFeatures],
+    [features, prodSupportFeatures, allocations],
   );
   const featureById = useMemo(
     () => new Map(mappingFeatures.map((f) => [f.id, f])),
@@ -5808,18 +5876,13 @@ function DeliveryPlan({
           />
         </div>
         <div className="allocation-filter-secondary">
-          <select
+          <SearchableSingleFilter
+            label="Workspace"
+            options={availableWorkspaceFilters}
             value={planWorkspaceFilter}
-            onChange={(e) => setPlanWorkspaceFilter(e.target.value)}
-            aria-label="Filter planning allocations by workspace"
-          >
-            <option value="ALL">All Workspaces</option>
-            {availableWorkspaceFilters.map((workspace) => (
-              <option key={workspace} value={workspace}>
-                {workspace}
-              </option>
-            ))}
-          </select>
+            onChange={setPlanWorkspaceFilter}
+            allLabel="All Workspaces"
+          />
           <select
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}

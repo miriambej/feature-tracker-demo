@@ -719,37 +719,66 @@ export default function SprintPlanning({
           </div>
           <div className="sprint-planning-add-stretch">
             <b>Record unplanned completed work</b>
-            <div className="sprint-stretch-feature-picker">
-              <input
-                type="search"
-                value={stretchSearch}
-                onChange={(event) => {
-                  setStretchSearch(event.target.value);
-                  setStretchFeatureId("");
-                }}
-                placeholder="Search feature or group..."
-                aria-label="Search open features"
-              />
-              <select
-                value={stretchFeatureId}
-                onChange={(event) => setStretchFeatureId(event.target.value)}
-              >
-                <option value="">
-                  {openFeaturesForStretch.length
-                    ? `Select open feature (${openFeaturesForStretch.length})`
-                    : "No open features found"}
-                </option>
-                {openFeaturesForStretch.map((feature) => (
-                  <option key={feature.id} value={feature.id}>
-                    {feature.feature_name}
-                    {feature.workspace &&
-                    feature.workspace !== feature.feature_name
-                      ? ` — ${feature.workspace}`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <details className="multi-select-filter sprint-stretch-feature-picker">
+              <summary>
+                <span className="multi-select-label">Feature</span>
+                <b>
+                  {stretchFeatureId
+                    ? featureById.get(stretchFeatureId)?.feature_name ||
+                      "Selected feature"
+                    : `Select open feature (${openFeaturesForStretch.length})`}
+                </b>
+                <i aria-hidden="true" />
+              </summary>
+              <div className="multi-select-menu">
+                <div className="multi-select-menu-head">
+                  <strong>Select feature</strong>
+                  {stretchFeatureId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStretchFeatureId("");
+                        setStretchSearch("");
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <input
+                  className="multi-select-search"
+                  type="search"
+                  value={stretchSearch}
+                  onChange={(event) => setStretchSearch(event.target.value)}
+                  placeholder="Search feature or group..."
+                  aria-label="Search open features"
+                />
+                <div className="multi-select-options single-select-options sprint-stretch-options">
+                  {openFeaturesForStretch.map((feature) => (
+                    <button
+                      type="button"
+                      key={feature.id}
+                      className={stretchFeatureId === feature.id ? "selected" : ""}
+                      onClick={(event) => {
+                        setStretchFeatureId(feature.id);
+                        setStretchSearch("");
+                        const details = event.currentTarget.closest("details");
+                        if (details) details.open = false;
+                      }}
+                    >
+                      <span>{feature.feature_name}</span>
+                      {feature.workspace &&
+                        feature.workspace !== feature.feature_name && (
+                          <small>{feature.workspace}</small>
+                        )}
+                    </button>
+                  ))}
+                  {!openFeaturesForStretch.length && (
+                    <small>No open features found</small>
+                  )}
+                </div>
+              </div>
+            </details>
             <select
               value={stretchStage}
               onChange={(event) => setStretchStage(event.target.value)}
@@ -923,7 +952,7 @@ export default function SprintPlanning({
                     <th>End date</th>
                     <th>Fist of Five</th>
                     <th>Total Goals</th>
-                    <th>Goals Completed</th>
+                    <th>Completed</th>
                     <th>Stretch</th>
                     <th>Predictability</th>
                   </tr>

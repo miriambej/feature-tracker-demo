@@ -104,6 +104,8 @@ export default function SprintPlanning({
   setSprintPlanningDisplay,
   completedFeatureClosures,
   setCompletedFeatureClosures,
+  completedFeatureComments,
+  setCompletedFeatureComments,
 }) {
   const featureById = useMemo(
     () => new Map(features.map((feature) => [feature.id, feature])),
@@ -1010,11 +1012,18 @@ export default function SprintPlanning({
         </div>
         <div className="sprint-planning-table-wrap">
           <table className="compact-table">
-            <thead><tr><th>Feature</th><th>Completed sprint</th><th>Close in DevOps</th></tr></thead>
+            <thead><tr><th>Feature</th><th>Completed sprint</th><th>Close in DevOps</th><th>Comments</th></tr></thead>
             <tbody>
               {completedFeatures.map(
                 ({ name, sprintId, closureKey, userStoryIds = [] }) => (
-                <tr key={closureKey}>
+                <tr
+                  key={closureKey}
+                  className={
+                    completedFeatureClosures[closureKey]
+                      ? ""
+                      : "completed-feature-needs-action"
+                  }
+                >
                   <td>
                     {userStoryIds.length === 1 ? (
                       <a
@@ -1047,7 +1056,13 @@ export default function SprintPlanning({
                     )}
                   </td>
                   <td>{sprintId}</td>
-                  <td>
+                  <td
+                    className={
+                      completedFeatureClosures[closureKey]
+                        ? ""
+                        : "completed-feature-close-missing"
+                    }
+                  >
                     <input
                       type="date"
                       value={completedFeatureClosures[closureKey] || ""}
@@ -1057,12 +1072,33 @@ export default function SprintPlanning({
                           [closureKey]: event.target.value,
                         }))
                       }
+                      aria-label={`DevOps closure date for ${name}`}
+                    />
+                    {!completedFeatureClosures[closureKey] && (
+                      <small className="completed-feature-action-label">
+                        Action needed
+                      </small>
+                    )}
+                  </td>
+                  <td>
+                    <input
+                      className="completed-feature-comment"
+                      type="text"
+                      value={completedFeatureComments?.[closureKey] || ""}
+                      onChange={(event) =>
+                        setCompletedFeatureComments((current) => ({
+                          ...(current || {}),
+                          [closureKey]: event.target.value,
+                        }))
+                      }
+                      placeholder="Why not closed / action needed"
+                      aria-label={`Comments for ${name}`}
                     />
                   </td>
                 </tr>
               ))}
               {!completedFeatures.length && (
-                <tr><td colSpan="3">No completed features in {quarter} yet.</td></tr>
+                <tr><td colSpan="4">No completed features in {quarter} yet.</td></tr>
               )}
             </tbody>
           </table>

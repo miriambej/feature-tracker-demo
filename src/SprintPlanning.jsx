@@ -1081,24 +1081,26 @@ export default function SprintPlanning({
                     )}
                   </td>
                   <td>
-                    <input
-                      className="completed-feature-comment"
-                      type="text"
-                      value={
-                        completedFeatureComments?.[closureKey] ??
-                        (completedFeatureClosures[closureKey]
-                          ? ""
-                          : "Add Miriam to review")
-                      }
-                      onChange={(event) =>
-                        setCompletedFeatureComments((current) => ({
-                          ...(current || {}),
-                          [closureKey]: event.target.value,
-                        }))
-                      }
-                      placeholder="Why not closed / action needed"
-                      aria-label={`Comments for ${name}`}
-                    />
+                    {!completedFeatureClosures[closureKey] ? (
+                      <input
+                        className="completed-feature-comment"
+                        type="text"
+                        value={
+                          completedFeatureComments?.[closureKey] ??
+                          "Miriam to review"
+                        }
+                        onChange={(event) =>
+                          setCompletedFeatureComments((current) => ({
+                            ...(current || {}),
+                            [closureKey]: event.target.value,
+                          }))
+                        }
+                        placeholder="Why not closed / action needed"
+                        aria-label={`Comments for ${name}`}
+                      />
+                    ) : (
+                      <span className="completed-feature-closed-note">Closed</span>
+                    )}
                   </td>
                 </tr>
               ))}

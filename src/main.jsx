@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { MIGRATION_FEATURE_NAMES } from "./migrationCatalog.js";
+import SprintPlanning from "./SprintPlanning.jsx";
 import "./styles.css";
 
 const STORAGE_KEY = "feature-tracker-v2-full";
@@ -69,7 +70,68 @@ const PLAN_STAGES = [
   "UAT",
 ];
 const DEFAULT_FINAL_STAGE = "UAT";
-const STAGE_OPTIONS = [...PLAN_STAGES, NEEDS_MAPPING_STAGE];
+const PLANNING_STAGE_OPTIONS = [
+  "Requirement",
+  "Tech Feasibility",
+  "Deployment",
+  "Build",
+  "Build Support",
+  "SIT Prep",
+  "SIT",
+  "SIT Support",
+  "BA Sign off prep",
+  "BA Sign off",
+  "BA sign off Support",
+  "SIT+BA Sign off Support",
+  "UAT Prep",
+  "UAT",
+  "UAT Dev Support",
+];
+const STAGE_OPTIONS = [...PLANNING_STAGE_OPTIONS, NEEDS_MAPPING_STAGE];
+const STAGE_TAG_BY_STAGE = {
+  Requirement: "Requirement",
+  "Tech Feasibility": "Tech Feasibility",
+  Deployment: "Deployment",
+  Build: "Build",
+  "Build Support": "Build Support",
+  "SIT Prep": "SIT",
+  SIT: "SIT",
+  "SIT Support": "SIT Dev Support",
+  "BA Sign off prep": "BA Sign off",
+  "BA Sign off": "BA Sign off",
+  "BA sign off Support": "BA sign off Dev Support",
+  "SIT+BA Sign off Support": "SIT Dev Support",
+  "UAT Prep": "UAT",
+  UAT: "UAT",
+  "UAT Dev Support": "UAT Dev Support",
+};
+const STAGE_LIFECYCLE_BY_STAGE = {
+  Requirement: "Requirement",
+  "Tech Feasibility": "Requirement",
+  Deployment: "Deploy",
+  Build: "Build",
+  "Build Support": "Build",
+  "SIT Prep": "SIT",
+  SIT: "SIT",
+  "SIT Support": "SIT",
+  "BA Sign off prep": "BA Sign Off",
+  "BA Sign off": "BA Sign Off",
+  "BA sign off Support": "BA Sign Off",
+  "SIT+BA Sign off Support": "BA Sign Off",
+  "UAT Prep": "UAT",
+  UAT: "UAT",
+  "UAT Dev Support": "UAT",
+};
+const DEVOPS_IDENTITY_BY_OWNER = {
+  Andrew: "Andrew Montgomery <Andrew.Montgomery18@det.nsw.edu.au>",
+  Annie: "Annie Bui (Annie) <Thi.Bui269@det.nsw.edu.au>",
+  Encarmine: "Encarmine Morris <Encarmine.Morris@det.nsw.edu.au>",
+  Fassahat: "Fassahat Qureshi <Fassahat.Qureshi@det.nsw.edu.au>",
+  Sebin: "Sebin Sebastian <Sebin.Sebastian@det.nsw.edu.au>",
+  Sujit: "Sujit Bal <Sujit.Bal@det.nsw.edu.au>",
+  Wasim: "Syed Wasim <Wasim.Syed@det.nsw.edu.au>",
+  Zhi: "Zhijun Ji <Zhijun.Ji@det.nsw.edu.au>",
+};
 const Q2_SPRINT_DATES = [
   ["26Q2S1", "2026-10-07", "2026-10-20"],
   ["26Q2S2", "2026-10-21", "2026-11-03"],
@@ -96,11 +158,8 @@ const Q2_TEAM = [
   "Annie",
   "Encarmine",
   "Fassahat",
-  "Mihir",
-  "Ravi",
   "Sebin",
   "Sujit",
-  "Tabish",
   "Wasim",
   "Zhi",
 ];
@@ -168,6 +227,69 @@ function MultiSelectFilter({ label, options, values, onChange, allLabel }) {
   );
 }
 
+function SearchableSingleFilter({
+  label,
+  options,
+  value,
+  onChange,
+  allLabel,
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = options.filter((option) =>
+    String(option || "")
+      .trim()
+      .toLowerCase()
+      .includes(String(search || "").trim().toLowerCase()),
+  );
+  return (
+    <details className="multi-select-filter searchable-single-filter">
+      <summary>
+        <span className="multi-select-label">{label}</span>
+        <b>{value === "ALL" ? allLabel : value}</b>
+        <i aria-hidden="true" />
+      </summary>
+      <div className="multi-select-menu">
+        <div className="multi-select-menu-head">
+          <strong>Select {label.toLowerCase()}</strong>
+          <button
+            type="button"
+            onClick={() => {
+              onChange("ALL");
+              setSearch("");
+            }}
+          >
+            Show all
+          </button>
+        </div>
+        <input
+          className="multi-select-search"
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={`Search ${label.toLowerCase()}...`}
+          aria-label={`Search ${label.toLowerCase()}s`}
+        />
+        <div className="multi-select-options single-select-options">
+          {filtered.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className={value === option ? "selected" : ""}
+              onClick={() => {
+                onChange(option);
+                setSearch("");
+              }}
+            >
+              {option}
+            </button>
+          ))}
+          {!filtered.length && <small>No matching {label.toLowerCase()}s</small>}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function id() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
 }
@@ -219,6 +341,11 @@ function allocationFeatureComplete(allocation, featureId) {
       : false;
   return !!allocation.isStageComplete;
 }
+function allocationAdvancesPlanning(allocation) {
+  if (allocation?.achievementStatus === "achieved") return true;
+  if (allocation?.achievementStatus === "not_achieved") return false;
+  return !!allocation?.isStageComplete;
+}
 const PROD_SUPPORT_GROUP = "Prod Support";
 const CREATE_PROD_STORY_VALUE = "__create_prod_support_story__";
 function isProdSupportGroup(name) {
@@ -236,11 +363,12 @@ function prodSupportStoryFeature(story) {
     localStoryId: story.id,
     isProdSupportStory: true,
     feature_name: prodSupportDisplayName(story),
-    workspace: PROD_SUPPORT_GROUP,
+    workspace: story.workspace || PROD_SUPPORT_GROUP,
     status: "initial",
     owner: "",
     user_count: 0,
     notes: story.notes || "",
+    parentUserStoryId: story.devOpsId || "",
   };
 }
 function commentStoryParts(comment) {
@@ -266,8 +394,8 @@ function commentStoryParts(comment) {
 }
 function plannedThrough(featureId, allocations) {
   const stages = allocations
-    .filter((a) => allocationHasFeature(a, featureId) && a.isStageComplete)
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .filter((a) => allocationHasFeature(a, featureId) && allocationAdvancesPlanning(a))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   const max = stages.length ? Math.max(...stages) : -1;
   return max >= 0 ? PLAN_STAGES[max] : "Not planned";
@@ -348,34 +476,66 @@ function normalisePlanStage(v) {
     req: "Requirement",
     requirement: "Requirement",
     requirements: "Requirement",
-    "tech feasibility": "Requirement",
-    "technical feasibility": "Requirement",
+    "tech feasibility": "Tech Feasibility",
+    "technical feasibility": "Tech Feasibility",
     build: "Build",
     development: "Build",
+    "build support": "Build Support",
+    "sit prep": "SIT Prep",
     sit: "SIT",
-    deploy: "Deploy",
-    deployment: "Deploy",
-    ba: "BA Sign Off",
-    "ba sign off": "BA Sign Off",
-    "ba signoff": "BA Sign Off",
-    "bs sign off": "BA Sign Off",
-    "business sign off": "BA Sign Off",
-    "skillpi sign off": "BA Sign Off",
-    "skillpi sign-off": "BA Sign Off",
+    "sit support": "SIT Support",
+    deploy: "Deployment",
+    deployment: "Deployment",
+    "ba sign off prep": "BA Sign off prep",
+    ba: "BA Sign off",
+    "ba sign off": "BA Sign off",
+    "ba signoff": "BA Sign off",
+    "bs sign off": "BA Sign off",
+    "business sign off": "BA Sign off",
+    "skillpi sign off": "BA Sign off",
+    "skillpi sign-off": "BA Sign off",
+    "ba sign off support": "BA sign off Support",
+    "sit ba sign off support": "SIT+BA Sign off Support",
+    "uat prep": "UAT Prep",
     uat: "UAT",
     "uat internal": "UAT",
-    "uat dev support": "UAT",
+    "uat dev support": "UAT Dev Support",
     "user acceptance testing": "UAT",
     "needs mapping": NEEDS_MAPPING_STAGE,
     unmapped: NEEDS_MAPPING_STAGE,
   };
   if (STAGE_OPTIONS.includes(raw)) return raw;
-  if (aliases[clean]) return aliases[clean];
-  if (clean.endsWith(" support")) {
-    const parent = clean.replace(/\s+support$/, "");
-    if (aliases[parent]) return aliases[parent];
-  }
-  return "";
+  return aliases[clean] || "";
+}
+function stageLifecycle(stage) {
+  return STAGE_LIFECYCLE_BY_STAGE[normalisePlanStage(stage) || stage] || stage;
+}
+function stagePlanIndex(stage) {
+  return PLAN_STAGES.indexOf(stageLifecycle(stage));
+}
+function stageTag(stage) {
+  const normalised = normalisePlanStage(stage) || stage;
+  return STAGE_TAG_BY_STAGE[normalised] || normalised || "";
+}
+function devOpsIdentityForOwner(owner) {
+  const normalised = normalisePersonName(owner);
+  if (DEVOPS_IDENTITY_BY_OWNER[normalised])
+    return DEVOPS_IDENTITY_BY_OWNER[normalised];
+  const key = String(normalised || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const aliases = {
+    "andrew montgomery": "Andrew",
+    "annie bui": "Annie",
+    "annie bui (annie)": "Annie",
+    "thi bui": "Annie",
+    "encarmine morris": "Encarmine",
+    "fassahat qureshi": "Fassahat",
+    "sebin sebastian": "Sebin",
+    "sujit bal": "Sujit",
+    "syed wasim": "Wasim",
+    "wasim syed": "Wasim",
+    "zhijun ji": "Zhi",
+  };
+  return DEVOPS_IDENTITY_BY_OWNER[aliases[key]] || "";
 }
 function stageSortIndex(stage) {
   const idx = STAGE_OPTIONS.indexOf(stage);
@@ -406,8 +566,8 @@ function nextPlanningStageFromRows(
   const targetIdx = finalStageIndex(finalStage);
   const doneIdx = PLAN_STAGES.indexOf(actualCompletedThrough(feature.status));
   const completedIdx = rows
-    .filter((a) => a.isStageComplete)
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .filter((a) => allocationAdvancesPlanning(a))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   if (
     Math.max(doneIdx, completedIdx.length ? Math.max(...completedIdx) : -1) >=
@@ -416,7 +576,7 @@ function nextPlanningStageFromRows(
     return "Planning Complete";
   const actualIdx = PLAN_STAGES.indexOf(actualPlannedThrough(feature.status));
   const plannedIdx = rows
-    .map((a) => PLAN_STAGES.indexOf(a.stage))
+    .map((a) => stagePlanIndex(a.stage))
     .filter((i) => i >= 0);
   const max = Math.max(
     actualIdx,
@@ -1543,7 +1703,7 @@ function ExecutiveDashboard({
           const complete = directlyLinked
             ? allocationFeatureComplete(allocation, feature.id)
             : !!allocation.isStageComplete;
-          const allocationStageIndex = PLAN_STAGES.indexOf(allocation.stage);
+          const allocationStageIndex = stagePlanIndex(allocation.stage);
           return (
             complete &&
             normaliseSprintName(allocation.sprint) &&
@@ -1632,7 +1792,7 @@ function ExecutiveDashboard({
       const completion = rows
         .filter(
           (row) =>
-            PLAN_STAGES.indexOf(row.stage) >= finalStageIndex(finalStage),
+            stagePlanIndex(row.stage) >= finalStageIndex(finalStage),
         )
         .at(-1);
       const fallbackFinish = parseDate(
@@ -2506,6 +2666,21 @@ function FeatureModal({ feature, workspaces, owners, onClose, onSave }) {
               ))}
             </select>
           </label>
+          <label>
+            Parent User Story ID
+            <input
+              inputMode="numeric"
+              value={form.parentUserStoryId || ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  parentUserStoryId: e.target.value.replace(/\D/g, ""),
+                })
+              }
+              placeholder="e.g. 123456"
+            />
+            <small>Existing Azure DevOps User Story that these planning tasks belong to.</small>
+          </label>
           <label className="migration-toggle">
             <input
               type="checkbox"
@@ -2744,9 +2919,18 @@ function DeliveryPlan({
   setFinalStageByFeatureId,
   onAddFeature,
   onEditFeature,
+  onUpdateFeature,
   onDeleteFeature,
   backlogOrder,
   setBacklogOrder,
+  sprintPlanningMeta,
+  setSprintPlanningMeta,
+  sprintPlanningDisplay,
+  setSprintPlanningDisplay,
+  completedFeatureClosures,
+  setCompletedFeatureClosures,
+  completedFeatureComments,
+  setCompletedFeatureComments,
 }) {
   const sprintOptions = useMemo(() => {
     const fromData = Array.from(
@@ -2775,31 +2959,33 @@ function DeliveryPlan({
       ).sort(),
     [sprintOptions],
   );
-  const [quarter, setQuarter] = useState("26Q1");
+  const [quarter, setQuarter] = useState("26Q2");
   const visibleSprintOptions = useMemo(
     () => sprintOptions.filter((s) => s.startsWith(quarter)),
     [sprintOptions, quarter],
   );
   const [sprint, setSprint] = useState(sprintOptions[0] || "26Q1S1");
-  const ownerOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          [
-            ...owners.filter((o) => o !== "ALL"),
-            ...capacities.map((c) => c.owner),
-            ...allocations.map((a) => a.owner),
-            ...daysOff.map((d) => d.owner),
-          ]
-            .map(normalisePersonName)
-            .filter((o) => o && !isRolePlaceholder(o)),
-        ),
-      ).sort(),
-    [owners, capacities, allocations, daysOff],
-  );
+  const ownerOptions = useMemo(() => {
+    const combined = Array.from(
+      new Set(
+        [
+          ...owners.filter((o) => o !== "ALL"),
+          ...capacities.map((c) => c.owner),
+          ...allocations.map((a) => a.owner),
+          ...daysOff.map((d) => d.owner),
+        ]
+          .map(normalisePersonName)
+          .filter((o) => o && !isRolePlaceholder(o)),
+      ),
+    ).sort();
+    return quarter === "26Q2"
+      ? combined.filter((owner) => Q2_TEAM.includes(owner))
+      : combined;
+  }, [owners, capacities, allocations, daysOff, quarter]);
   const [ownerFilter, setOwnerFilter] = useState("ALL");
   const [planWorkspaceFilter, setPlanWorkspaceFilter] = useState("ALL");
   const [stageFilter, setStageFilter] = useState("ALL");
+  const [allocationMatrixView, setAllocationMatrixView] = useState("feature");
   const [allocationOwnerFilters, setAllocationOwnerFilters] = useState([]);
   const [allocationSprintFilters, setAllocationSprintFilters] = useState([]);
   const [warning, setWarning] = useState("");
@@ -2814,9 +3000,11 @@ function DeliveryPlan({
     workspace: "",
     owner: "",
     user_count: "",
+    parentUserStoryId: "",
     notes: "",
   });
   const [selectedPlanFeature, setSelectedPlanFeature] = useState(null);
+  const [editingPlanItem, setEditingPlanItem] = useState(null);
   const [editingAllocation, setEditingAllocation] = useState(null);
   const [showAllDiagnostics, setShowAllDiagnostics] = useState(false);
   const [dayOffForm, setDayOffForm] = useState({
@@ -2838,6 +3026,18 @@ function DeliveryPlan({
       text,
       owner,
       sprintId,
+      left: Math.min(window.innerWidth - 170, Math.max(170, rect.left + rect.width / 2)),
+      top: Math.max(12, rect.top - 10),
+    });
+  }
+  function showCommentTooltip(event, allocation) {
+    const text = String(allocation?.stageComment || "").trim();
+    if (!text) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setCapacityTooltip({
+      text,
+      owner: "Comment",
+      sprintId: allocation?.sprint || "",
       left: Math.min(window.innerWidth - 170, Math.max(170, rect.left + rect.width / 2)),
       top: Math.max(12, rect.top - 10),
     });
@@ -2920,10 +3120,18 @@ function DeliveryPlan({
           [
             ...features.map((f) => f.workspace),
             ...prodSupportFeatures.map((f) => f.workspace),
+            ...allocations.map((a) =>
+              normaliseWorkspaceName(
+                a.planningGroup ||
+                  a.workspace ||
+                  a.workspaceName ||
+                  (!allocationFeatureIds(a).length ? a.featureName : ""),
+              ),
+            ),
           ].filter(Boolean),
         ),
       ).sort(),
-    [features, prodSupportFeatures],
+    [features, prodSupportFeatures, allocations],
   );
   const featureById = useMemo(
     () => new Map(mappingFeatures.map((f) => [f.id, f])),
@@ -2990,14 +3198,22 @@ function DeliveryPlan({
     () => new Map(allocations.map((a) => [a.id, a])),
     [allocations],
   );
-  const allocationWorkspace = (a) =>
-    normaliseWorkspaceName(
-      a.planningGroup ||
+  const allocationWorkspace = (a) => {
+    const visibleFeatureId =
+      a.visibleFeatureId ||
+      (allocationFeatureIds(a).length === 1 ? allocationFeatureIds(a)[0] : "");
+    const linkedWorkspace = visibleFeatureId
+      ? featureById.get(visibleFeatureId)?.workspace
+      : "";
+    return normaliseWorkspaceName(
+      linkedWorkspace ||
+        a.planningGroup ||
         a.workspace ||
         a.featureName ||
         a.workspaceName ||
         "Unknown",
     );
+  };
   const allocationDisplayName = (a) =>
     a.featureName && a.planningGroup
       ? a.featureName
@@ -3050,6 +3266,11 @@ function DeliveryPlan({
         status: "initial",
         owner: "",
         user_count: 0,
+        parentUserStoryId:
+          standaloneAllocationsByKey
+            .get(key)
+            ?.find((allocation) => allocation.parentUserStoryId)
+            ?.parentUserStoryId || "",
       })),
     ],
     [
@@ -3078,8 +3299,8 @@ function DeliveryPlan({
       actualCompletedThrough(feature.status),
     );
     const completed = rows
-      .filter((a) => a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .filter((a) => allocationAdvancesPlanning(a))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0);
     const max = Math.max(
       actualIdx,
@@ -3098,12 +3319,12 @@ function DeliveryPlan({
     const targetIdx = finalStageIndex(featureFinalStage(feature));
     const floorIdx = PLAN_STAGES.indexOf(floor);
     const plannedOnly = rows
-      .filter((a) => !a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .filter((a) => !allocationAdvancesPlanning(a))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0);
     const completedNext = rows
-      .filter((a) => a.isStageComplete)
-      .map((a) => PLAN_STAGES.indexOf(a.stage))
+      .filter((a) => allocationAdvancesPlanning(a))
+      .map((a) => stagePlanIndex(a.stage))
       .filter((i) => i >= 0)
       .map((i) => Math.min(i + 1, targetIdx));
     const max = Math.min(
@@ -3467,6 +3688,117 @@ function DeliveryPlan({
       ),
     );
   }
+  function updateStandaloneUserStoryId(planningKey, value) {
+    const cleanValue = String(value || "").replace(/\D/g, "");
+    setAllocations((prev) =>
+      prev.map((allocation) => {
+        const key =
+          allocation.featureName ||
+          allocation.planningGroup ||
+          allocation.workspaceName;
+        if (key !== planningKey || allocationFeatureIds(allocation).length)
+          return allocation;
+        return { ...allocation, parentUserStoryId: cleanValue };
+      }),
+    );
+    setSelectedPlanFeature((current) =>
+      current?.planningKey === planningKey
+        ? { ...current, parentUserStoryId: cleanValue }
+        : current,
+    );
+  }
+  function updatePlanUserStoryId(feature, value) {
+    const cleanValue = String(value || "").replace(/\D/g, "");
+    if (feature.planningKey) {
+      updateStandaloneUserStoryId(feature.planningKey, cleanValue);
+      return;
+    }
+    if (feature.isProdSupportStory) {
+      setProdSupportStories((prev) =>
+        prev.map((story) =>
+          story.id === feature.localStoryId
+            ? { ...story, devOpsId: cleanValue }
+            : story,
+        ),
+      );
+    } else if (onUpdateFeature) {
+      onUpdateFeature({ ...feature, parentUserStoryId: cleanValue });
+    }
+    setSelectedPlanFeature((current) =>
+      current?.id === feature.id
+        ? { ...current, parentUserStoryId: cleanValue }
+        : current,
+    );
+  }
+  function openPlanningItemEditor(feature) {
+    if (!feature.planningKey && !feature.isProdSupportStory) {
+      onEditFeature(feature);
+      setSelectedPlanFeature(null);
+      return;
+    }
+    setEditingPlanItem({ ...feature });
+    setSelectedPlanFeature(null);
+  }
+  function savePlanningItemEdits() {
+    if (!editingPlanItem) return;
+    const nextName = String(editingPlanItem.feature_name || "").trim();
+    const nextWorkspace = String(editingPlanItem.workspace || "").trim();
+    const nextUserStoryId = String(
+      editingPlanItem.parentUserStoryId || "",
+    ).replace(/\D/g, "");
+    if (!nextName || !nextWorkspace) return;
+
+    if (editingPlanItem.planningKey) {
+      const planningKey = editingPlanItem.planningKey;
+      setAllocations((prev) =>
+        prev.map((allocation) => {
+          const key =
+            allocation.featureName ||
+            allocation.planningGroup ||
+            allocation.workspaceName;
+          if (key !== planningKey || allocationFeatureIds(allocation).length)
+            return allocation;
+          return {
+            ...allocation,
+            featureName: nextName,
+            planningGroup: nextWorkspace,
+            workspace: nextWorkspace,
+            workspaceName: nextWorkspace,
+            parentUserStoryId: nextUserStoryId,
+          };
+        }),
+      );
+    } else if (editingPlanItem.isProdSupportStory) {
+      setProdSupportStories((prev) =>
+        prev.map((story) =>
+          story.id === editingPlanItem.localStoryId
+            ? {
+                ...story,
+                name: nextName.replace(/^Prod Support\s*-\s*/i, ""),
+                workspace: nextWorkspace,
+                devOpsId: nextUserStoryId,
+                notes: editingPlanItem.notes || story.notes || "",
+              }
+            : story,
+        ),
+      );
+      setAllocations((prev) =>
+        prev.map((allocation) =>
+          allocationHasFeature(allocation, editingPlanItem.id)
+            ? {
+                ...allocation,
+                planningGroup: nextWorkspace,
+                workspace: nextWorkspace,
+                workspaceName: nextWorkspace,
+                parentUserStoryId: nextUserStoryId,
+              }
+            : allocation,
+        ),
+      );
+    }
+    setEditingPlanItem(null);
+  }
+
   function addReconcileLine(source) {
     const sourceId = allocationSourceId(source);
     setAllocations((prev) => [
@@ -3739,6 +4071,10 @@ function DeliveryPlan({
       sprintDates,
       prodSupportStories,
       finalStageByFeatureId,
+      sprintPlanningMeta,
+      sprintPlanningDisplay,
+      completedFeatureClosures,
+      completedFeatureComments,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -3969,6 +4305,10 @@ function DeliveryPlan({
         setSprintDates(restoredSprintDates);
         setProdSupportStories(restoredProdStories);
         setFinalStageByFeatureId(restoredFinalStages);
+        setSprintPlanningMeta(data.sprintPlanningMeta || {});
+        setSprintPlanningDisplay(data.sprintPlanningDisplay || {});
+        setCompletedFeatureClosures(data.completedFeatureClosures || {});
+        setCompletedFeatureComments(data.completedFeatureComments || {});
         setCustomSprints(restoredSprints);
         setImportDiagnostics([]);
         setSprint(nextSprint);
@@ -4651,7 +4991,10 @@ function DeliveryPlan({
     setSelectedPlanFeature(feature);
     setQuickPlan((q) => ({
       ...q,
-      stage: stage === "Planning Complete" ? "UAT" : stage,
+      stage:
+        stage === "Planning Complete"
+          ? "UAT"
+          : normalisePlanStage(stage) || "Requirement",
       sprint: visibleSprintOptions.includes(q.sprint)
         ? q.sprint
         : visibleSprintOptions[0],
@@ -4668,15 +5011,38 @@ function DeliveryPlan({
       a.planningGroup || a.workspaceName || a.featureName,
     );
   };
-  const filteredAllocations = visibleAllocationRows
+  const allocationFacetBase = visibleAllocationRows.filter(
+    (a) =>
+      (!a.sprint || String(a.sprint).startsWith(quarter)) &&
+      (allocationSprintFilters.length === 0 ||
+        allocationSprintFilters.includes(a.sprint)) &&
+      (ownerFilter === "ALL" || a.owner === ownerFilter) &&
+      (allocationOwnerFilters.length === 0 ||
+        allocationOwnerFilters.includes(a.owner)),
+  );
+  const availableWorkspaceFilters = Array.from(
+    new Set(
+      allocationFacetBase
+        .filter((a) => stageFilter === "ALL" || a.stage === stageFilter)
+        .map((a) => allocationWorkspace(a))
+        .filter(Boolean),
+    ),
+  ).sort();
+  const availableStageFilters = Array.from(
+    new Set(
+      allocationFacetBase
+        .filter(
+          (a) =>
+            planWorkspaceFilter === "ALL" ||
+            allocationWorkspace(a) === planWorkspaceFilter,
+        )
+        .map((a) => a.stage)
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => stageSortIndex(a) - stageSortIndex(b) || a.localeCompare(b));
+  const filteredAllocations = allocationFacetBase
     .filter(
       (a) =>
-        (!a.sprint || String(a.sprint).startsWith(quarter)) &&
-        (allocationSprintFilters.length === 0 ||
-          allocationSprintFilters.includes(a.sprint)) &&
-        (ownerFilter === "ALL" || a.owner === ownerFilter) &&
-        (allocationOwnerFilters.length === 0 ||
-          allocationOwnerFilters.includes(a.owner)) &&
         (planWorkspaceFilter === "ALL" ||
           allocationWorkspace(a) === planWorkspaceFilter) &&
         (stageFilter === "ALL" || a.stage === stageFilter),
@@ -4686,6 +5052,20 @@ function DeliveryPlan({
         String(a.sprint).localeCompare(String(b.sprint)) ||
         stageSortIndex(a.stage) - stageSortIndex(b.stage),
     );
+  useEffect(() => {
+    if (
+      stageFilter !== "ALL" &&
+      !availableStageFilters.includes(stageFilter)
+    )
+      setStageFilter("ALL");
+  }, [stageFilter, availableStageFilters.join("|")]);
+  useEffect(() => {
+    if (
+      planWorkspaceFilter !== "ALL" &&
+      !allFeatureWorkspaces.includes(planWorkspaceFilter)
+    )
+      setPlanWorkspaceFilter("ALL");
+  }, [planWorkspaceFilter, allFeatureWorkspaces.join("|")]);
   const matrixSprints = Array.from(
     new Set(
       [
@@ -4721,6 +5101,79 @@ function DeliveryPlan({
     (a, b) =>
       a.item.localeCompare(b.item) || a.workspace.localeCompare(b.workspace),
   );
+  const workspaceMatrixRows = Object.values(
+    filteredAllocations.reduce((groups, allocation) => {
+      const workspace = allocationWorkspace(allocation);
+      groups[workspace] ||
+        (groups[workspace] = {
+          key: workspace,
+          workspace,
+          allocations: [],
+          days: 0,
+        });
+      groups[workspace].allocations.push(allocation);
+      groups[workspace].days += Number(allocation.days || 0);
+      return groups;
+    }, {}),
+  )
+    .map((row) => {
+      const featureKeys = new Set(
+        row.allocations.map((allocation) =>
+          (allocation.visibleFeatureName || allocationDisplayName(allocation)) + "||" + row.workspace,
+        ),
+      );
+      const goalKeys = new Set(
+        row.allocations
+          .filter((allocation) => allocation.isStageComplete)
+          .map((allocation) =>
+            (allocation.visibleFeatureName || allocationDisplayName(allocation)) + "||" + row.workspace,
+          ),
+      );
+      return {
+        ...row,
+        featureCount: featureKeys.size,
+        goalCount: goalKeys.size,
+        features: allocationMatrixRows.filter(
+          (featureRow) => featureRow.workspace === row.workspace,
+        ),
+      };
+    })
+    .sort((a, b) => a.workspace.localeCompare(b.workspace));
+  const sprintWorkspaceCount = new Set(
+    filteredAllocations.map((allocation) => allocationWorkspace(allocation)),
+  ).size;
+  const sprintGoalCount = allocationMatrixRows.filter((row) =>
+    row.allocations.some((allocation) => allocation.isStageComplete),
+  ).length;
+  const featureForAllocationMatrixRow = (row) => {
+    const linkedIds = Array.from(
+      new Set(
+        row.allocations.flatMap((allocation) =>
+          resolvedAllocationFeatureIds(allocation),
+        ),
+      ),
+    ).filter((featureId) => featureById.has(featureId));
+    if (linkedIds.length === 1) return featureById.get(linkedIds[0]);
+
+    const itemKey = matchKey(row.item);
+    const workspaceKey = matchKey(normaliseWorkspaceName(row.workspace));
+    const exactMatches = mappingFeatures.filter(
+      (feature) =>
+        matchKey(feature.feature_name) === itemKey &&
+        (!workspaceKey ||
+          matchKey(normaliseWorkspaceName(feature.workspace)) === workspaceKey),
+    );
+    if (exactMatches.length === 1) return exactMatches[0];
+
+    const standaloneMatches = planningFeatures.filter(
+      (feature) =>
+        feature.planningKey &&
+        matchKey(feature.feature_name) === itemKey &&
+        (!workspaceKey ||
+          matchKey(normaliseWorkspaceName(feature.workspace)) === workspaceKey),
+    );
+    return standaloneMatches.length === 1 ? standaloneMatches[0] : null;
+  };
   const editingAllocationRow = editingAllocation
     ? allocations.find((a) => a.id === editingAllocation.id)
     : null;
@@ -4741,16 +5194,32 @@ function DeliveryPlan({
         (planWorkspaceFilter === "ALL" ||
           allocationWorkspace(a) === planWorkspaceFilter),
     )
-    .map((a) => ({
-      sprint: a.sprint || "Unscheduled",
-      item: allocationDisplayName(a),
-      workspace: allocationWorkspace(a),
-      stage: a.stage || NEEDS_MAPPING_STAGE,
-      sourceStage: a.sourceStage || a.stage || "",
-      owner: a.owner || "",
-      days: Number(a.days || 0),
-      outcome: a.isStageComplete ? "Expected complete" : "Planned",
-    }))
+    .map((a) => {
+      const linkedFeatureIds = resolvedAllocationFeatureIds(a);
+      const linkedFeature =
+        linkedFeatureIds.length === 1
+          ? featureById.get(linkedFeatureIds[0])
+          : null;
+      return {
+        sprint: a.sprint || "Unscheduled",
+        item: allocationDisplayName(a),
+        workspace: allocationWorkspace(a),
+        stage: a.stage || NEEDS_MAPPING_STAGE,
+        sourceStage: a.sourceStage || a.stage || "",
+        owner: a.owner || "",
+        days: Number(a.days || 0),
+        outcome: a.isStageComplete ? "Expected Completed" : "Planned",
+        comment: String(a.stageComment || "").trim(),
+        parentUserStoryId: String(
+          linkedFeature?.parentUserStoryId ||
+            linkedFeature?.devOpsId ||
+            a.parentUserStoryId ||
+            "",
+        ).trim(),
+        parentUserStoryTitle:
+          linkedFeature?.feature_name || allocationDisplayName(a),
+      };
+    })
     .sort(
       (a, b) =>
         a.sprint.localeCompare(b.sprint) ||
@@ -4766,38 +5235,100 @@ function DeliveryPlan({
       return groups;
     }, {}),
   );
+  const devOpsExportSprint =
+    allocationSprintFilters.length === 1
+      ? normaliseSprintName(allocationSprintFilters[0])
+      : "";
+
   function exportSprintPlanCsv() {
+    if (!devOpsExportSprint) {
+      setWarning(
+        "Select exactly one Sprint in Planning Allocations before exporting to DevOps.",
+      );
+      return;
+    }
+    const rowsForSprint = sprintPlanRows.filter(
+      (row) =>
+        normaliseSprintName(row.sprint) === devOpsExportSprint &&
+        row.stage !== NEEDS_MAPPING_STAGE,
+    );
+    const unmappedOwners = Array.from(
+      new Set(
+        rowsForSprint
+          .filter((row) => !devOpsIdentityForOwner(row.owner))
+          .map((row) => row.owner || "Unassigned"),
+      ),
+    );
+    if (unmappedOwners.length) {
+      setWarning(
+        `DevOps export stopped. Assign a current team member to: ${unmappedOwners.join(", ")}.`,
+      );
+      return;
+    }
+    if (!rowsForSprint.length) {
+      setWarning(`No DevOps tasks found for ${devOpsExportSprint}.`);
+      return;
+    }
     const headers = [
-      "Sprint",
-      "Feature / Planning Item",
-      "Workspace",
-      "Stage",
-      "Source Stage",
-      "Owner",
-      "Days",
-      "Outcome",
+      "Work Item Type",
+      "Title",
+      "Iteration Path",
+      "Assigned To",
+      "State",
+      "Tags",
+      "Description",
+      "Original Estimate",
+      "Remaining Work",
+      "Completed Work",
     ];
-    const rows = sprintPlanRows.map((r) => [
-      r.sprint,
-      r.item,
-      r.workspace,
-      r.stage,
-      r.sourceStage,
-      r.owner,
-      r.days,
-      r.outcome,
-    ]);
+    const rows = rowsForSprint.map((row) => {
+      const selectedStage = normalisePlanStage(row.stage) || row.stage;
+      const title = `${selectedStage}: ${row.item}`;
+      const tag = stageTag(selectedStage);
+      const tags =
+        row.outcome === "Expected Completed" ? `${tag},Goal` : tag;
+      const descriptionParts = [
+        `${String(selectedStage).toUpperCase()}: ${row.item}`,
+      ];
+      if (row.parentUserStoryId) {
+        descriptionParts.push(
+          `USER STORY ID: ${row.parentUserStoryId}`,
+        );
+      }
+      if (row.comment) {
+        descriptionParts.push(`COMMENT: ${row.comment}`);
+      }
+      const description = descriptionParts.join(". ");
+      const estimate = Number(row.days || 0) * 6.5;
+      const sprintId = normaliseSprintName(row.sprint);
+      const sprintQuarter = quarterFromSprint(sprintId, quarter);
+      return [
+        "Task",
+        title,
+        `Skilling for Recovery\\${sprintQuarter}\\Sprint ${sprintId}`,
+        devOpsIdentityForOwner(row.owner),
+        "New",
+        tags,
+        description,
+        Number(estimate.toFixed(2)),
+        Number(estimate.toFixed(2)),
+        0,
+      ];
+    });
     const csv = [
-      headers.join(","),
-      ...rows.map((r) => r.map(csvEscape).join(",")),
+      headers.map(csvEscape).join(","),
+      ...rows.map((row) => row.map(csvEscape).join(",")),
     ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "plan-by-sprint.csv";
-    a.click();
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `devops-tasks-${devOpsExportSprint}.csv`;
+    link.click();
     URL.revokeObjectURL(url);
+    setWarning(
+      `Exported ${rows.length} DevOps task(s) for ${devOpsExportSprint}. Existing User Stories are not included or modified.`,
+    );
   }
   const diagnosticsWithIndex = useMemo(
     () =>
@@ -5167,17 +5698,167 @@ function DeliveryPlan({
       </div>
     </div>
   );
+  const renderAllocationFeatureRow = (
+    row,
+    { nested = false, showWorkspace = true } = {},
+  ) => (
+    <tr key={row.key} className={nested ? "allocation-nested-feature-row" : ""}>
+      <td className="allocation-feature-cell">
+        <div className={nested ? "allocation-nested-feature-name" : ""}>
+          {featureForAllocationMatrixRow(row) ? (
+            <button
+              type="button"
+              className="allocation-feature-link"
+              onClick={() =>
+                openPlanFeature(featureForAllocationMatrixRow(row))
+              }
+              title="Open feature planning"
+            >
+              {row.item}
+            </button>
+          ) : (
+            <b>{row.item}</b>
+          )}
+          {showWorkspace && <small>{row.workspace}</small>}
+        </div>
+        <small className="allocation-feature-summary">
+          <span>
+            {row.allocations.length} allocation
+            {row.allocations.length === 1 ? "" : "s"} / {row.days} day
+            {row.days === 1 ? "" : "s"}
+          </span>
+          {(() => {
+            const feature = featureForAllocationMatrixRow(row);
+            const userStoryId =
+              feature?.parentUserStoryId ||
+              row.allocations.find((allocation) => allocation.parentUserStoryId)
+                ?.parentUserStoryId ||
+              "";
+            return userStoryId ? (
+              <a
+                className="user-story-id linked devops-user-story-link"
+                href={`https://educationbi.visualstudio.com/Skilling%20for%20Recovery/_workitems/edit/${userStoryId}`}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open User Story ${userStoryId} in Azure DevOps`}
+              >
+                US: {userStoryId}
+              </a>
+            ) : (
+              <span className="user-story-id missing">US: Not linked</span>
+            );
+          })()}
+        </small>
+        {row.needsMapping && (
+          <span className="mapping-chip">Needs Mapping</span>
+        )}
+      </td>
+      {matrixSprints.map((sprintId) => {
+        const sprintAllocs = row.allocations.filter(
+          (a) => (a.sprint || "Unscheduled") === sprintId,
+        );
+        return (
+          <td
+            className="allocation-sprint-cell"
+            key={`${row.key}-${sprintId}`}
+          >
+            {sprintAllocs.length ? (
+              sprintAllocs.map((a) => (
+                <button
+                  type="button"
+                  className={`allocation-chip ${a.isStageComplete ? "goal" : ""} ${a.achievementStatus === "achieved" ? (a.isStageComplete ? "goal-achieved" : "stretch-achieved") : ""} ${a.achievementStatus === "not_achieved" ? "not-achieved" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""} ${a.stageComment ? "has-comment" : ""}`}
+                  key={a.id}
+                  aria-label={
+                    a.stageComment
+                      ? `${a.owner || "Unassigned"}, ${a.stage}, ${Number(a.days || 0)} days. Comment: ${a.stageComment}`
+                      : undefined
+                  }
+                  onMouseEnter={(event) => showCommentTooltip(event, a)}
+                  onMouseLeave={() => setCapacityTooltip(null)}
+                  onFocus={(event) => showCommentTooltip(event, a)}
+                  onBlur={() => setCapacityTooltip(null)}
+                  onClick={() =>
+                    setEditingAllocation({
+                      id: String(a.id).includes("::")
+                        ? String(a.id).split("::")[0]
+                        : a.id,
+                    })
+                  }
+                >
+                  <span>
+                    {a.owner || "Unassigned"} / {a.stage} /{" "}
+                    {Number(a.days || 0)}d
+                  </span>
+                  <small>
+                    {a.achievementStatus === "achieved"
+                      ? a.isStageComplete
+                        ? "Goal achieved"
+                        : "Stretch achieved"
+                      : a.achievementStatus === "not_achieved"
+                        ? "Not achieved"
+                        : a.isStageComplete
+                          ? "Goal"
+                          : "Planned"}
+                    {a.featureIds?.length > 1 ? " / shared allocation" : ""}
+                  </small>
+                  {a.stageComment && (
+                    <small className="allocation-comment-indicator">
+                      Comment
+                    </small>
+                  )}
+                </button>
+              ))
+            ) : (
+              <span className="allocation-empty">-</span>
+            )}
+          </td>
+        );
+      })}
+    </tr>
+  );
+
   const renderAllocationMatrixEditor = () => (
     <div className="panel allocation-matrix-panel">
-      <div className="panel-top">
+      <div className="panel-top allocation-panel-heading">
         <div>
-          <h3>Planning Allocations</h3>
+          <div className="allocation-title-row">
+            <h3>Planning Allocations</h3>
+            <div
+              className="allocation-view-toggle"
+              role="group"
+              aria-label="View planning allocations by"
+            >
+              <button
+                type="button"
+                className={allocationMatrixView === "feature" ? "active" : ""}
+                onClick={() => setAllocationMatrixView("feature")}
+              >
+                Features
+              </button>
+              <button
+                type="button"
+                className={allocationMatrixView === "workspace" ? "active" : ""}
+                onClick={() => setAllocationMatrixView("workspace")}
+              >
+                Workspaces
+              </button>
+            </div>
+          </div>
           <p className="muted">
-            Spreadsheet-style view grouped by feature across all imported
-            sprints. Click a chip to edit the allocation.
+            Feature view shows individual work. Workspace view groups those
+            features so you can see the full breakdown.
           </p>
         </div>
-        <div className="toolbar-left">
+        <span className="pill-status neutral">
+          {sprintWorkspaceCount} workspace
+          {sprintWorkspaceCount === 1 ? "" : "s"} /{" "}
+          {sprintGoalCount} goal{sprintGoalCount === 1 ? "" : "s"} /{" "}
+          {filteredAllocations.length} allocation
+          {filteredAllocations.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="allocation-filter-bar">
+        <div className="allocation-filter-primary">
           <label className="linked-filter">
             Quarter
             <select value={quarter} onChange={(e) => setQuarter(e.target.value)}>
@@ -5200,19 +5881,27 @@ function DeliveryPlan({
             onChange={setAllocationOwnerFilters}
             allLabel="All Owners"
           />
+        </div>
+        <div className="allocation-filter-secondary">
+          <SearchableSingleFilter
+            label="Workspace"
+            options={availableWorkspaceFilters}
+            value={planWorkspaceFilter}
+            onChange={setPlanWorkspaceFilter}
+            allLabel="All Workspaces"
+          />
           <select
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
+            aria-label="Filter planning allocations by stage"
           >
             <option value="ALL">All Stages</option>
-            {STAGE_OPTIONS.map((s) => (
-              <option key={s}>{s}</option>
+            {availableStageFilters.map((stage) => (
+              <option key={stage} value={stage}>
+                {stage}
+              </option>
             ))}
           </select>
-          <span className="pill-status neutral">
-            {filteredAllocations.length} allocation
-            {filteredAllocations.length === 1 ? "" : "s"}
-          </span>
         </div>
       </div>
       <div
@@ -5228,7 +5917,11 @@ function DeliveryPlan({
           </colgroup>
           <thead>
             <tr>
-              <th>Feature / Group</th>
+              <th>
+                {allocationMatrixView === "workspace"
+                  ? "Workspace / Feature"
+                  : "Feature / Group"}
+              </th>
               {matrixSprints.map((s) => {
                 const dates = effectiveSprintDates.find(
                   (row) => row.sprint === normaliseSprintName(s),
@@ -5246,66 +5939,47 @@ function DeliveryPlan({
             </tr>
           </thead>
           <tbody>
-            {allocationMatrixRows.map((row) => (
-              <tr key={row.key}>
-                <td className="allocation-feature-cell">
-                  <b>{row.item}</b>
-                  <small>{row.workspace}</small>
-                  <small>
-                    {row.allocations.length} allocation
-                    {row.allocations.length === 1 ? "" : "s"} / {row.days} day
-                    {row.days === 1 ? "" : "s"}
-                  </small>
-                  {row.needsMapping && (
-                    <span className="mapping-chip">Needs Mapping</span>
-                  )}
-                </td>
-                {matrixSprints.map((sprintId) => {
-                  const sprintAllocs = row.allocations.filter(
-                    (a) => (a.sprint || "Unscheduled") === sprintId,
-                  );
-                  return (
-                    <td
-                      className="allocation-sprint-cell"
-                      key={`${row.key}-${sprintId}`}
-                    >
-                      {sprintAllocs.length ? (
-                        sprintAllocs.map((a) => (
-                          <button
-                            type="button"
-                            className={`allocation-chip ${a.isStageComplete ? "complete" : ""} ${allocationNeedsMapping(a) ? "needs-map" : ""}`}
-                            key={a.id}
-                            onClick={() =>
-                              setEditingAllocation({
-                                id: String(a.id).includes("::") ? String(a.id).split("::")[0] : a.id,
-                              })
-                            }
-                          >
-                            <span>
-                              {a.owner || "Unassigned"} / {a.stage} /{" "}
-                              {Number(a.days || 0)}d
-                            </span>
+            {allocationMatrixView === "workspace"
+              ? workspaceMatrixRows.map((group) => (
+                  <React.Fragment key={group.key}>
+                    <tr className="allocation-workspace-group-row">
+                      <td colSpan={matrixSprints.length + 1}>
+                        <div className="allocation-workspace-group-heading">
+                          <div>
+                            <strong>{group.workspace}</strong>
                             <small>
-                              {a.isStageComplete
-                                ? "Expected Complete"
-                                : "Planned"}
-                              {a.featureIds?.length > 1
-                                ? " / shared allocation"
-                                : ""}
+                              {group.featureCount} feature
+                              {group.featureCount === 1 ? "" : "s"} ·{" "}
+                              {group.goalCount} goal
+                              {group.goalCount === 1 ? "" : "s"} ·{" "}
+                              {group.days} day{group.days === 1 ? "" : "s"}
                             </small>
-                          </button>
-                        ))
-                      ) : (
-                        <span className="allocation-empty">-</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                          </div>
+                          <span>
+                            {group.allocations.length} allocation
+                            {group.allocations.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {group.features.map((row) =>
+                      renderAllocationFeatureRow(row, {
+                        nested: true,
+                        showWorkspace: false,
+                      }),
+                    )}
+                  </React.Fragment>
+                ))
+              : allocationMatrixRows.map((row) =>
+                  renderAllocationFeatureRow(row),
+                )}
           </tbody>
           </table>
-          {!allocationMatrixRows.length && (
+          {!(
+            allocationMatrixView === "workspace"
+              ? workspaceMatrixRows.length
+              : allocationMatrixRows.length
+          ) && (
             <p className="muted">No allocations match the current filters.</p>
           )}
         </div>
@@ -5505,9 +6179,6 @@ function DeliveryPlan({
                   </option>
                 ))}
               </select>
-              {editingAllocationRow.stageComment && (
-                <small>Comment: {editingAllocationRow.stageComment}</small>
-              )}
               {editingAllocationRow.possibleMatches?.length > 0 && (
                 <small>
                   Possible matches:{" "}
@@ -5714,6 +6385,21 @@ function DeliveryPlan({
               </select>
             </label>
           )}
+          <label className="full allocation-comment-field">
+            Comment
+            <textarea
+              value={editingAllocationRow.stageComment || ""}
+              placeholder="Add a comment for this task, e.g. Power App changes"
+              onChange={(e) =>
+                updateAllocation(editingAllocationRow.id, {
+                  stageComment: e.target.value,
+                })
+              }
+            />
+            <small>
+              Saved with this task and shown when you hover over it in Planning Allocations.
+            </small>
+          </label>
         </div>
         <div className="modal-actions">
           <button
@@ -5740,11 +6426,25 @@ function DeliveryPlan({
         <div><b>Original owner</b><span>{editingAllocationRow.originalOwner || editingAllocationRow.owner || "Unassigned"}</span></div>
         <div><b>Original stage</b><span>{editingAllocationRow.sourceStage || editingAllocationRow.stage || "-"}</span></div>
         <div><b>Original days</b><span>{originalSourceDays}d</span></div>
-        <div className="source-comment"><b>Comment</b><span>{editingAllocationRow.stageComment || "No source comment"}</span></div>
+        <div className="source-comment">
+          <b>Comment</b>
+          <textarea
+            value={editingAllocationRow.stageComment || ""}
+            placeholder="Add a comment for this task, e.g. Power App changes"
+            onChange={(e) =>
+              updateAllocation(editingAllocationRow.id, {
+                stageComment: e.target.value,
+              })
+            }
+          />
+          <small>
+            This comment is saved with the task, shown on hover, and included in the DevOps Description export.
+          </small>
+        </div>
       </div>
       <div className={`reconcile-total ${reconciledDays === originalSourceDays ? "balanced" : "unbalanced"}`}>Planning lines total: {reconciledDays}d / original {originalSourceDays}d {reconciledDays === originalSourceDays ? "(reconciled)" : "(split total differs from source)"}</div>
       <div className="reconcile-table-wrap"><table className="compact-table reconcile-table">
-        <thead><tr><th>Child Feature</th><th>Sprint</th><th>Owner</th><th>Stage</th><th>Days</th><th>Outcome</th><th>Delete</th></tr></thead>
+        <thead><tr><th>Child Feature</th><th>Sprint</th><th>Owner</th><th>Stage</th><th>Days</th><th>Goal</th><th>Result</th><th>Delete</th></tr></thead>
         <tbody>{reconciliationLines.map(line => {
           const availability = availabilityForSprint(line.sprint);
           const selectedAvailability = availability.find(
@@ -5757,11 +6457,12 @@ function DeliveryPlan({
               <td><select value={line.owner || ""} onChange={e => updateAllocation(line.id, { owner: e.target.value })}><option value="">Unassigned</option>{ownerOptions.map(o => <option key={o}>{o}</option>)}</select></td>
               <td><select value={line.stage || NEEDS_MAPPING_STAGE} onChange={e => updateAllocation(line.id, { stage: e.target.value })}>{STAGE_OPTIONS.map(s => <option key={s}>{s}</option>)}</select></td>
               <td><input type="number" min="0" value={Number(line.days || 0)} onChange={e => updateAllocation(line.id, { days: Number(e.target.value || 0), sharedVisibility: false })}/></td>
-              <td><select value={allocationOutcomeComplete(line) ? "complete" : "planned"} onChange={e => updateAllocationOutcome(line, e.target.value === "complete")}><option value="planned">Planned</option><option value="complete">Expected complete</option></select></td>
+              <td><select value={allocationOutcomeComplete(line) ? "complete" : "planned"} onChange={e => updateAllocationOutcome(line, e.target.value === "complete")}><option value="planned">Planned</option><option value="complete">Goal</option></select></td>
+              <td><select value={line.achievementStatus || "pending"} onChange={e => updateAllocation(line.id, { achievementStatus: e.target.value })}><option value="pending">Not confirmed</option><option value="achieved">Achieved</option><option value="not_achieved">Not achieved</option></select></td>
               <td><button onClick={() => deletePlanningLine(line.id)}>Delete</button></td>
             </tr>
             <tr className="reconcile-availability-row">
-              <td colSpan="7">
+              <td colSpan="8">
                 <div className="capacity-chip-section reconcile-capacity">
                   <div className="reconcile-capacity-heading">
                     <b>Team availability · {line.sprint || "Select a sprint"}</b>
@@ -5810,7 +6511,21 @@ function DeliveryPlan({
       <div className="modal-card">
         <div className="panel-top">
           <div>
-            <h2>{selectedPlanFeature.feature_name}</h2>
+            <h2>
+              {selectedPlanFeature.parentUserStoryId ? (
+                <a
+                  className="devops-user-story-link"
+                  href={`https://educationbi.visualstudio.com/Skilling%20for%20Recovery/_workitems/edit/${selectedPlanFeature.parentUserStoryId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open User Story ${selectedPlanFeature.parentUserStoryId} in Azure DevOps`}
+                >
+                  {selectedPlanFeature.feature_name}
+                </a>
+              ) : (
+                selectedPlanFeature.feature_name
+              )}
+            </h2>
             <small>
               {selectedPlanFeature.workspace} / Current:{" "}
               {STATUS_LABEL[selectedPlanFeature.status] ||
@@ -5824,28 +6539,35 @@ function DeliveryPlan({
               Final stage: {featureFinalStage(selectedPlanFeature)} /{" "}
               {priority(selectedPlanFeature.user_count)} /{" "}
               {Number(selectedPlanFeature.user_count || 0).toLocaleString()}{" "}
-              users
+              users /{" "}
+              <span className="standalone-us-editor">
+                US:
+                <input
+                  inputMode="numeric"
+                  aria-label="User Story ID"
+                  value={selectedPlanFeature.parentUserStoryId || ""}
+                  placeholder="Not linked"
+                  onChange={(e) =>
+                    updatePlanUserStoryId(selectedPlanFeature, e.target.value)
+                  }
+                />
+              </span>
             </small>
           </div>
           <div className="feature-plan-actions">
+            <button
+              onClick={() => openPlanningItemEditor(selectedPlanFeature)}
+            >
+              Edit Feature
+            </button>
             {!selectedPlanFeature.planningKey &&
               !selectedPlanFeature.isProdSupportStory && (
-                <>
-                  <button
-                    onClick={() => {
-                      onEditFeature(selectedPlanFeature);
-                      setSelectedPlanFeature(null);
-                    }}
-                  >
-                    Edit Feature
-                  </button>
-                  <button
-                    className="danger-button"
-                    onClick={() => setFeaturePendingDelete(selectedPlanFeature)}
-                  >
-                    Delete Feature
-                  </button>
-                </>
+                <button
+                  className="danger-button"
+                  onClick={() => setFeaturePendingDelete(selectedPlanFeature)}
+                >
+                  Delete Feature
+                </button>
               )}
             <button onClick={() => setSelectedPlanFeature(null)}>Close</button>
           </div>
@@ -6417,6 +7139,9 @@ function DeliveryPlan({
             onChange={importPlanningExcel}
           />
           <button onClick={exportPlanningData}>Export Planning Data</button>
+          <button onClick={exportSprintPlanCsv}>
+            Export DevOps CSV{devOpsExportSprint ? ` (${devOpsExportSprint})` : " (select 1 sprint)"}
+          </button>
           <button
             onClick={() => document.getElementById("planning-json").click()}
           >
@@ -6450,15 +7175,13 @@ function DeliveryPlan({
               <option key={o}>{o}</option>
             ))}
           </select>
-          <select
+          <SearchableSingleFilter
+            label="Workspace"
+            options={allFeatureWorkspaces}
             value={planWorkspaceFilter}
-            onChange={(e) => setPlanWorkspaceFilter(e.target.value)}
-          >
-            <option value="ALL">All Workspaces</option>
-            {allFeatureWorkspaces.map((w) => (
-              <option key={w}>{w}</option>
-            ))}
-          </select>
+            onChange={setPlanWorkspaceFilter}
+            allLabel="All Workspaces"
+          />
         </div>
       </div>
       <div className="panel planning-controls">
@@ -6476,6 +7199,11 @@ function DeliveryPlan({
       </div>
       {importMessage && (
         <div className="panel import-message">{importMessage}</div>
+      )}
+      {warning && (
+        <div className="panel import-message" role="status">
+          {warning}
+        </div>
       )}
       {importDiagnosticsPanel}
       {kanbanPanel}
@@ -6500,6 +7228,68 @@ function DeliveryPlan({
                 <span>{entry}</span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {editingPlanItem && (
+        <div className="modal">
+          <div className="modal-card small">
+            <div className="panel-top">
+              <div>
+                <div className="eyebrow">Delivery Plan</div>
+                <h2>Edit feature</h2>
+              </div>
+              <button onClick={() => setEditingPlanItem(null)}>Close</button>
+            </div>
+            <div className="form-grid">
+              <label className="full">
+                Feature name
+                <input
+                  value={editingPlanItem.feature_name || ""}
+                  onChange={(e) =>
+                    setEditingPlanItem({
+                      ...editingPlanItem,
+                      feature_name: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label className="full">
+                Workspace
+                <input
+                  list="planning-edit-workspaces"
+                  value={editingPlanItem.workspace || ""}
+                  onChange={(e) =>
+                    setEditingPlanItem({
+                      ...editingPlanItem,
+                      workspace: e.target.value,
+                    })
+                  }
+                />
+                <datalist id="planning-edit-workspaces">
+                  {allFeatureWorkspaces.map((workspace) => (
+                    <option key={workspace} value={workspace} />
+                  ))}
+                </datalist>
+              </label>
+              <label>
+                User Story ID
+                <input
+                  inputMode="numeric"
+                  value={editingPlanItem.parentUserStoryId || ""}
+                  onChange={(e) =>
+                    setEditingPlanItem({
+                      ...editingPlanItem,
+                      parentUserStoryId: e.target.value.replace(/\D/g, ""),
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setEditingPlanItem(null)}>Cancel</button>
+              <button onClick={savePlanningItemEdits}>Save</button>
+            </div>
           </div>
         </div>
       )}
@@ -6594,6 +7384,20 @@ function DeliveryPlan({
                   }
                 />
               </label>
+              <label>
+                Parent User Story ID
+                <input
+                  inputMode="numeric"
+                  value={featureDraft.parentUserStoryId}
+                  placeholder="e.g. 123456"
+                  onChange={(e) =>
+                    setFeatureDraft({
+                      ...featureDraft,
+                      parentUserStoryId: e.target.value.replace(/\D/g, ""),
+                    })
+                  }
+                />
+              </label>
               <label className="full">
                 Notes
                 <textarea
@@ -6616,6 +7420,7 @@ function DeliveryPlan({
                     owner: featureDraft.owner.trim(),
                     user_count: Number(featureDraft.user_count || 0),
                     status: "initial",
+                    parentUserStoryId: featureDraft.parentUserStoryId.trim(),
                     notes: featureDraft.notes.trim(),
                   });
                   setFeatureDraft({
@@ -6623,6 +7428,7 @@ function DeliveryPlan({
                     workspace: "",
                     owner: "",
                     user_count: "",
+                    parentUserStoryId: "",
                     notes: "",
                   });
                   setShowAddFeature(false);
@@ -6644,155 +7450,386 @@ function SprintReview({
   features,
   prodSupportStories,
 }) {
-  const sprintOptions = useMemo(
-    () => [
-      "ALL",
-      ...Array.from(
-        new Set(
-          [...customSprints, ...allocations.map((a) => a.sprint)]
-            .map(normaliseSprintName)
-            .filter(Boolean),
-        ),
-      ).sort(),
-    ],
-    [allocations, customSprints],
-  );
-  const [sprint, setSprint] = useState("ALL");
+  const reviewAllocationWorkspace = (allocation) =>
+    normaliseWorkspaceName(
+      allocation.planningGroup ||
+        allocation.workspace ||
+        allocation.workspaceName ||
+        "Unknown",
+    );
   const featureById = useMemo(
     () =>
       new Map(
         [...features, ...prodSupportStories.map(prodSupportStoryFeature)].map(
-          (f) => [f.id, f],
+          (feature) => [feature.id, feature],
         ),
       ),
     [features, prodSupportStories],
   );
-  const rows = useMemo(
+
+  const sprintOptions = useMemo(
     () =>
-      allocations
-        .flatMap((a) => {
-          const ids = allocationFeatureIds(a);
-          const visible =
-            ids.length > 1
-              ? ids
-                  .map((featureId) => ({
-                    featureId,
-                    featureName: featureById.get(featureId)?.feature_name,
-                  }))
-                  .filter((row) => row.featureName)
-              : [
-                  {
-                    featureId: ids[0] || "",
-                    featureName:
-                      a.featureName && a.planningGroup
-                        ? a.featureName
-                        : a.actualFeatureName ||
-                          a.featureName ||
-                          a.planningGroup ||
-                          a.workspaceName ||
-                          "Planning item",
-                  },
-                ];
-          return visible.map((row) => {
-          const stageText = a.stage || a.sourceStage || "";
-          return {
-              sprint: a.sprint || "Unscheduled",
-              feature: row.featureName,
-              stage: stageText,
-            keyGoal: /goal/i.test(`${a.sourceStage || ""} ${a.stageComment || ""}`),
-              achieved: allocationFeatureComplete(a, row.featureId),
-              sourceAllocationId: a.id,
-            };
-          });
-        })
-        .filter(
-          (a) => sprint === "ALL" || normaliseSprintName(a.sprint) === sprint,
-        )
-        .sort(
-          (a, b) =>
-            String(a.sprint).localeCompare(String(b.sprint)) ||
-            a.feature.localeCompare(b.feature) ||
-            a.stage.localeCompare(b.stage),
+      Array.from(
+        new Set(
+          allocations
+            .map((allocation) => normaliseSprintName(allocation.sprint))
+            .filter(Boolean),
         ),
-    [allocations, sprint, featureById],
+      ).sort(),
+    [allocations],
   );
-  function exportSprintReviewCsv() {
-    const csv = [
-      ["Sprint", "Feature / Story", "Stage", "Key Goal", "Achieved"].join(","),
-      ...rows.map((r) =>
-        [
-          r.sprint,
-          r.feature,
-          r.stage,
-          r.keyGoal ? "TRUE" : "",
-          r.achieved ? "TRUE" : "",
-        ]
-          .map(csvEscape)
-          .join(","),
+  const currentSprint = useMemo(() => {
+    const today = TODAY.getTime();
+    const datedSprint = Q2_SPRINT_DATES.find((row) => {
+      const start = new Date(`${row.startDate}T00:00:00`).getTime();
+      const end = new Date(`${row.endDate}T23:59:59`).getTime();
+      return today >= start && today <= end;
+    })?.sprint;
+    return datedSprint && sprintOptions.includes(datedSprint)
+      ? datedSprint
+      : sprintOptions[0] || "";
+  }, [sprintOptions.join("|")]);
+  const [sprint, setSprint] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+
+  useEffect(() => {
+    if (!sprintOptions.length) {
+      if (sprint) setSprint("");
+      return;
+    }
+    if (!sprint || !sprintOptions.includes(sprint)) {
+      setSprint(currentSprint);
+    }
+  }, [sprint, currentSprint, sprintOptions.join("|")]);
+
+  const reviewRows = useMemo(() => {
+    if (!sprint) return [];
+
+    return allocations
+      .filter(
+        (allocation) =>
+          normaliseSprintName(allocation.sprint) === normaliseSprintName(sprint),
+      )
+      .map((allocation) => {
+        const linkedId = allocationFeatureIds(allocation)[0] || "";
+        const linkedFeature = linkedId ? featureById.get(linkedId) : null;
+        const featureName =
+          allocation.visibleFeatureName ||
+          allocation.actualFeatureName ||
+          allocation.featureName ||
+          linkedFeature?.feature_name ||
+          allocation.planningGroup ||
+          allocation.workspaceName ||
+          "Planning item";
+        const workspace =
+          normaliseWorkspaceName(
+            allocation.planningGroup ||
+              allocation.workspace ||
+              linkedFeature?.workspace ||
+              allocation.workspaceName ||
+              "Unknown",
+          );
+
+        return {
+          key: `${workspace}||${matchKey(featureName)}`,
+          featureId: linkedId,
+          featureName,
+          workspace,
+          owner: allocation.owner || "Unassigned",
+          stage:
+            normalisePlanStage(allocation.stage || allocation.sourceStage || "") ||
+            allocation.stage ||
+            allocation.sourceStage ||
+            "Not set",
+          isGoal: Boolean(allocation.isStageComplete),
+        };
+      });
+  }, [allocations, featureById, sprint]);
+
+  const workspaceRows = useMemo(() => {
+    const groups = new Map();
+
+    reviewRows.forEach((row) => {
+      if (!groups.has(row.workspace)) {
+        groups.set(row.workspace, {
+          workspace: row.workspace,
+          rows: [],
+        });
+      }
+      groups.get(row.workspace).rows.push(row);
+    });
+
+    return Array.from(groups.values())
+      .map((group) => {
+        const displayRows = [];
+        const seen = new Set();
+
+        group.rows
+          .sort(
+            (a, b) =>
+              stageSortIndex(a.stage) - stageSortIndex(b.stage) ||
+              a.owner.localeCompare(b.owner) ||
+              a.featureName.localeCompare(b.featureName),
+          )
+          .forEach((row) => {
+            const dedupeKey = row.isGoal
+              ? `goal||${row.key}||${row.owner}||${row.stage}`
+              : `planned||${row.owner}||${row.stage}`;
+            if (seen.has(dedupeKey)) return;
+            seen.add(dedupeKey);
+            displayRows.push(row);
+          });
+
+        return {
+          workspace: group.workspace,
+          rows: displayRows,
+        };
+      })
+      .sort((a, b) => a.workspace.localeCompare(b.workspace));
+  }, [reviewRows]);
+
+  const numberedWorkspaceRows = useMemo(() => {
+    const seenGoals = new Set();
+    let nextGoalNumber = 1;
+
+    return workspaceRows.map((group) => ({
+      ...group,
+      rows: group.rows.map((row) => {
+        let goalNumber = null;
+        if (row.isGoal && !seenGoals.has(row.key)) {
+          seenGoals.add(row.key);
+          goalNumber = nextGoalNumber;
+          nextGoalNumber += 1;
+        }
+        return { ...row, goalNumber };
+      }),
+    }));
+  }, [workspaceRows]);
+
+  const goalCount = useMemo(
+    () =>
+      numberedWorkspaceRows.reduce(
+        (count, group) =>
+          count + group.rows.filter((row) => row.goalNumber !== null).length,
+        0,
       ),
+    [numberedWorkspaceRows],
+  );
+
+  function sprintReviewCopyContent() {
+    const headers = ["Feature", "People", sprint || "Sprint"];
+    const rows = [];
+    numberedWorkspaceRows.forEach((group) => {
+      group.rows.forEach((item, index) => {
+        rows.push([
+          index === 0 ? group.workspace : "",
+          item.owner || "",
+          item.stage || "",
+        ]);
+      });
+    });
+
+    const escapeHtml = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+    const html =
+      "<table><thead><tr>" +
+      headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("") +
+      "</tr></thead><tbody>" +
+      rows
+        .map(
+          (row) =>
+            "<tr>" +
+            row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("") +
+            "</tr>",
+        )
+        .join("") +
+      "</tbody></table>";
+
+    const text = [
+      headers.join("\t"),
+      ...rows.map((row) => row.join("\t")),
     ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "sprint-review.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+
+    return { html, text };
   }
+
+  function legacyCopyText(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    if (!copied) throw new Error("Legacy clipboard copy failed.");
+  }
+
+  async function copySprintReviewImage() {
+    const source = document.querySelector(".sprint-review-compact-panel");
+    if (!source) return;
+    setCopyStatus("Copying…");
+
+    try {
+      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        try {
+          const { default: html2canvas } = await import("html2canvas");
+          const canvas = await html2canvas(source, {
+            backgroundColor: "#ffffff",
+            scale: 2,
+            useCORS: true,
+            logging: false,
+          });
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png"),
+          );
+          if (blob) {
+            await navigator.clipboard.write([
+              new ClipboardItem({ "image/png": blob }),
+            ]);
+            setCopyStatus("Copied image");
+            window.setTimeout(() => setCopyStatus(""), 1800);
+            return;
+          }
+        } catch (imageError) {
+          console.warn("Image clipboard copy failed; using table fallback.", imageError);
+        }
+      }
+
+      const { html, text } = sprintReviewCopyContent();
+
+      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              "text/html": new Blob([html], { type: "text/html" }),
+              "text/plain": new Blob([text], { type: "text/plain" }),
+            }),
+          ]);
+          setCopyStatus("Copied table");
+          window.setTimeout(() => setCopyStatus(""), 1800);
+          return;
+        } catch (richCopyError) {
+          console.warn("Rich table copy failed; using text fallback.", richCopyError);
+        }
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        legacyCopyText(text);
+      }
+
+      setCopyStatus("Copied table");
+      window.setTimeout(() => setCopyStatus(""), 1800);
+    } catch (error) {
+      console.error(error);
+      setCopyStatus("Could not copy");
+      window.setTimeout(() => setCopyStatus(""), 2500);
+    }
+  }
+
   return (
-    <div className="dashboard">
-      <div className="dash-head">
-        <div>
-          <div className="eyebrow">Sprint Review</div>
-          <h1>Sprint review table</h1>
-        </div>
-        <div className="toolbar-left">
-          <select value={sprint} onChange={(e) => setSprint(e.target.value)}>
-            {sprintOptions.map((s) => (
-              <option key={s} value={s}>
-                {s === "ALL" ? "All Sprints" : s}
-              </option>
-            ))}
-          </select>
-          <button onClick={exportSprintReviewCsv}>Export Review CSV</button>
-        </div>
-      </div>
-      <div className="panel sprint-review-panel">
-        <table className="compact-table sprint-review-table">
-          <thead>
-            <tr>
-              <th>Feature / Story</th>
-              <th>Stage</th>
-              <th>Key Goal</th>
-              <th>Achieved</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length ? (
-              rows.map((row, idx) => (
-                <tr key={`${row.sprint}-${idx}-${row.feature}-${row.stage}`}>
-                  <td>
-                    {row.feature}
-                    <small>{row.sprint}</small>
-                  </td>
-                  <td className={row.keyGoal ? "review-goal-stage" : ""}>
-                    {row.stage}
-                  </td>
-                  <td>{row.keyGoal ? "TRUE" : ""}</td>
-                  <td>{row.achieved ? "TRUE" : ""}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="4">No planning allocations yet.</td>
-              </tr>
+    <div className="dashboard sprint-review-dashboard">
+      <div className="sprint-review-capture">
+        <div className="sprint-review-compact-head">
+          <div>
+            <div className="eyebrow">Sprint Review</div>
+            <h2>Current sprint commitments</h2>
+          </div>
+          <div className="sprint-review-compact-actions">
+            <span className="sprint-review-total">
+              <b>{numberedWorkspaceRows.length}</b> workspaces · <b>{goalCount}</b> goals
+            </span>
+            <label data-html2canvas-ignore="true">
+              Sprint
+              <select value={sprint} onChange={(event) => setSprint(event.target.value)}>
+                {sprintOptions.map((sprintId) => (
+                  <option key={sprintId} value={sprintId}>
+                    {sprintId}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="sprint-review-copy-button"
+              onClick={copySprintReviewImage}
+              title="Copy Sprint Review as image"
+              aria-label="Copy Sprint Review as image"
+              data-html2canvas-ignore="true"
+            >
+              <span aria-hidden="true">⧉</span>
+            </button>
+            {copyStatus && (
+              <small className="sprint-review-copy-status" data-html2canvas-ignore="true">
+                {copyStatus}
+              </small>
             )}
-          </tbody>
-        </table>
+          </div>
+        </div>
+
+        <div className="panel sprint-review-workspace-panel sprint-review-compact-panel">
+          <div className="sprint-review-table-wrap">
+            <table className="compact-table sprint-review-workspace-table sprint-review-compact-table">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>People</th>
+                  <th>{sprint || "Sprint"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {numberedWorkspaceRows.length ? (
+                  numberedWorkspaceRows.flatMap((group) =>
+                    group.rows.map((item, index) => (
+                      <tr key={`${group.workspace}-${item.key}-${item.owner}-${item.stage}-${index}`}>
+                        {index === 0 && (
+                          <td
+                            className="sprint-review-workspace-name"
+                            rowSpan={group.rows.length}
+                          >
+                            <strong>{group.workspace}</strong>
+                          </td>
+                        )}
+                        <td className="sprint-review-person-cell">
+                          <span>{item.owner}</span>
+                          {item.goalNumber !== null && (
+                            <b
+                              className="sprint-review-goal-number"
+                              title={`Goal ${item.goalNumber}: ${item.featureName}`}
+                            >
+                              {item.goalNumber}
+                            </b>
+                          )}
+                        </td>
+                        <td
+                          className={item.isGoal ? "sprint-review-stage-goal" : ""}
+                          title={item.featureName}
+                        >
+                          {item.stage}
+                        </td>
+                      </tr>
+                    )),
+                  )
+                ) : (
+                  <tr>
+                    <td colSpan="3">No planning allocations for this sprint.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
-  );
-}
+  );}
 
 function App() {
   const [features, setFeatures] = useState([]);
@@ -6805,6 +7842,10 @@ function App() {
   const [finalStageByFeatureId, setFinalStageByFeatureId] = useState({});
   const [backlogOrder, setBacklogOrder] = useState([]);
   const [customSprints, setCustomSprints] = useState([]);
+  const [sprintPlanningMeta, setSprintPlanningMeta] = useState({});
+  const [sprintPlanningDisplay, setSprintPlanningDisplay] = useState({});
+  const [completedFeatureClosures, setCompletedFeatureClosures] = useState({});
+  const [completedFeatureComments, setCompletedFeatureComments] = useState({});
   const [mode, setMode] = useState("executive");
   const [theme, setTheme] = useState(
     () => localStorage.getItem("feature-tracker-theme") || "dark",
@@ -6833,6 +7874,10 @@ function App() {
         setFinalStageByFeatureId(saved.finalStageByFeatureId || {});
         setBacklogOrder(saved.backlogOrder || []);
         setCustomSprints(saved.customSprints || []);
+        setSprintPlanningMeta(saved.sprintPlanningMeta || {});
+        setSprintPlanningDisplay(saved.sprintPlanningDisplay || {});
+        setCompletedFeatureClosures(saved.completedFeatureClosures || {});
+        setCompletedFeatureComments(saved.completedFeatureComments || {});
       }
     } catch {
     } finally {
@@ -6856,6 +7901,10 @@ function App() {
             finalStageByFeatureId,
             backlogOrder,
             customSprints,
+            sprintPlanningMeta,
+            sprintPlanningDisplay,
+            completedFeatureClosures,
+            completedFeatureComments,
           }),
         ),
       200,
@@ -6872,6 +7921,10 @@ function App() {
     finalStageByFeatureId,
     backlogOrder,
     customSprints,
+    sprintPlanningMeta,
+    sprintPlanningDisplay,
+    completedFeatureClosures,
+    completedFeatureComments,
     loaded,
   ]);
   useEffect(() => {
@@ -6885,6 +7938,19 @@ function App() {
       ).sort(),
     ],
     [features],
+  );
+  const executiveFeatures = useMemo(
+    () => [...features, ...prodSupportStories.map(prodSupportStoryFeature)],
+    [features, prodSupportStories],
+  );
+  const executiveWorkspaces = useMemo(
+    () => [
+      "ALL",
+      ...Array.from(
+        new Set(executiveFeatures.map((f) => f.workspace).filter(Boolean)),
+      ).sort(),
+    ],
+    [executiveFeatures],
   );
   const owners = useMemo(
     () => [
@@ -6911,6 +7977,8 @@ function App() {
             workspace: normaliseWorkspaceName(r.workspace || "Unknown"),
             owner: r.owner || "",
             user_count: Number(r.user_count || 0),
+            parentUserStoryId:
+              r.parent_user_story_id || r.parentUserStoryId || "",
             notes: r.notes || "",
             Build: r.Build || "",
             SIT: r.SIT || "",
@@ -6943,6 +8011,7 @@ function App() {
       "workspace",
       "owner",
       "user_count",
+      "parent_user_story_id",
       "notes",
       "Build",
       "SIT",
@@ -6954,6 +8023,7 @@ function App() {
       f.workspace,
       f.owner,
       f.user_count,
+      f.parentUserStoryId || "",
       f.notes,
       milestones[f.workspace]?.Build || "",
       milestones[f.workspace]?.SIT || "",
@@ -6976,7 +8046,52 @@ function App() {
     setMilestones((prev) => buildWorkspaceMilestones([f, ...features], prev));
   }
   function saveFeature(f) {
-    setFeatures((prev) => prev.map((x) => (x.id === f.id ? f : x)));
+    if (f?.isProdSupportStory) {
+      setProdSupportStories((prev) =>
+        prev.map((story) =>
+          story.id === f.localStoryId
+            ? {
+                ...story,
+                name: String(f.feature_name || "").replace(/^Prod Support\s*-\s*/i, ""),
+                workspace: f.workspace || story.workspace || PROD_SUPPORT_GROUP,
+                devOpsId: String(f.parentUserStoryId || ""),
+                notes: f.notes || story.notes || "",
+              }
+            : story,
+        ),
+      );
+      setAllocations((prev) =>
+        prev.map((allocation) =>
+          allocationHasFeature(allocation, f.id)
+            ? {
+                ...allocation,
+                planningGroup: f.workspace || allocation.planningGroup,
+                workspace: f.workspace || allocation.workspace,
+                workspaceName: f.workspace || allocation.workspaceName,
+                parentUserStoryId: String(f.parentUserStoryId || ""),
+              }
+            : allocation,
+        ),
+      );
+    } else {
+      setFeatures((prev) => prev.map((x) => (x.id === f.id ? f : x)));
+      setAllocations((prev) =>
+        prev.map((allocation) => {
+          const linkedIds = allocationFeatureIds(allocation);
+          if (linkedIds.length !== 1 || linkedIds[0] !== f.id) return allocation;
+          return {
+            ...allocation,
+            planningGroup: f.workspace || allocation.planningGroup,
+            workspace: f.workspace || allocation.workspace,
+            workspaceName: f.workspace || allocation.workspaceName,
+            parentUserStoryId:
+              String(f.parentUserStoryId || "") ||
+              allocation.parentUserStoryId ||
+              "",
+          };
+        }),
+      );
+    }
     setEditing(null);
   }
   const migrationFeatures = features.filter(isMigrationFeature);
@@ -7074,6 +8189,12 @@ function App() {
             Delivery Plan
           </button>
           <button
+            className={mode === "sprintPlanning" ? "active" : ""}
+            onClick={() => setMode("sprintPlanning")}
+          >
+            Sprint Planning
+          </button>
+          <button
             className={mode === "sprintReview" ? "active" : ""}
             onClick={() => setMode("sprintReview")}
           >
@@ -7109,14 +8230,14 @@ function App() {
       </div>
       {mode === "executive" && (
         <ExecutiveDashboard
-          features={features}
+          features={executiveFeatures}
           allocations={allocations}
           customSprints={customSprints}
           sprintDates={sprintDates}
           finalStageByFeatureId={finalStageByFeatureId}
           milestones={milestones}
           setMilestones={setMilestones}
-          workspaces={workspaces}
+          workspaces={executiveWorkspaces}
           workspaceFilter={workspaceFilter}
           setWorkspaceFilter={setWorkspaceFilter}
           selectedWorkspace={selectedWorkspace}
@@ -7192,9 +8313,40 @@ function App() {
           setFinalStageByFeatureId={setFinalStageByFeatureId}
           onAddFeature={addFeature}
           onEditFeature={setEditing}
+          onUpdateFeature={saveFeature}
           onDeleteFeature={deleteFeature}
           backlogOrder={backlogOrder}
           setBacklogOrder={setBacklogOrder}
+          sprintPlanningMeta={sprintPlanningMeta}
+          setSprintPlanningMeta={setSprintPlanningMeta}
+          sprintPlanningDisplay={sprintPlanningDisplay}
+          setSprintPlanningDisplay={setSprintPlanningDisplay}
+          completedFeatureClosures={completedFeatureClosures}
+          setCompletedFeatureClosures={setCompletedFeatureClosures}
+          completedFeatureComments={completedFeatureComments}
+          setCompletedFeatureComments={setCompletedFeatureComments}
+        />
+      )}{" "}
+      {mode === "sprintPlanning" && (
+        <SprintPlanning
+          allocations={allocations}
+          setAllocations={setAllocations}
+          customSprints={customSprints}
+          sprintDates={sprintDates}
+          features={executiveFeatures}
+          getFinalStage={(feature) =>
+            finalStageByFeatureId?.[feature.id]
+              ? normaliseFinalStage(finalStageByFeatureId[feature.id])
+              : defaultFinalStageForFeature(feature)
+          }
+          sprintPlanningMeta={sprintPlanningMeta}
+          setSprintPlanningMeta={setSprintPlanningMeta}
+          sprintPlanningDisplay={sprintPlanningDisplay}
+          setSprintPlanningDisplay={setSprintPlanningDisplay}
+          completedFeatureClosures={completedFeatureClosures}
+          setCompletedFeatureClosures={setCompletedFeatureClosures}
+          completedFeatureComments={completedFeatureComments}
+          setCompletedFeatureComments={setCompletedFeatureComments}
         />
       )}{" "}
       {mode === "sprintReview" && (

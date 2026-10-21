@@ -7616,28 +7616,117 @@ function SprintReview({
     [numberedWorkspaceRows],
   );
 
+  function sprintReviewCopyContent() {
+    const headers = ["Feature", "People", sprint || "Sprint"];
+    const rows = [];
+    numberedWorkspaceRows.forEach((group) => {
+      group.rows.forEach((item, index) => {
+        rows.push([
+          index === 0 ? group.workspace : "",
+          item.owner || "",
+          item.stage || "",
+        ]);
+      });
+    });
+
+    const escapeHtml = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+    const html =
+      "<table><thead><tr>" +
+      headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("") +
+      "</tr></thead><tbody>" +
+      rows
+        .map(
+          (row) =>
+            "<tr>" +
+            row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("") +
+            "</tr>",
+        )
+        .join("") +
+      "</tbody></table>";
+
+    const text = [
+      headers.join("\t"),
+      ...rows.map((row) => row.join("\t")),
+    ].join("\n");
+
+    return { html, text };
+  }
+
+  function legacyCopyText(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    if (!copied) throw new Error("Legacy clipboard copy failed.");
+  }
+
   async function copySprintReviewImage() {
     const source = document.querySelector(".sprint-review-compact-panel");
     if (!source) return;
+    setCopyStatus("Copying…");
+
     try {
-      setCopyStatus("Copying…");
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(source, {
-        backgroundColor: "#ffffff",
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-      const blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, "image/png"),
-      );
-      if (!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-        throw new Error("Clipboard image copy is not supported in this browser.");
+      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        try {
+          const { default: html2canvas } = await import("html2canvas");
+          const canvas = await html2canvas(source, {
+            backgroundColor: "#ffffff",
+            scale: 2,
+            useCORS: true,
+            logging: false,
+          });
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png"),
+          );
+          if (blob) {
+            await navigator.clipboard.write([
+              new ClipboardItem({ "image/png": blob }),
+            ]);
+            setCopyStatus("Copied image");
+            window.setTimeout(() => setCopyStatus(""), 1800);
+            return;
+          }
+        } catch (imageError) {
+          console.warn("Image clipboard copy failed; using table fallback.", imageError);
+        }
       }
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": blob }),
-      ]);
-      setCopyStatus("Copied");
+
+      const { html, text } = sprintReviewCopyContent();
+
+      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              "text/html": new Blob([html], { type: "text/html" }),
+              "text/plain": new Blob([text], { type: "text/plain" }),
+            }),
+          ]);
+          setCopyStatus("Copied table");
+          window.setTimeout(() => setCopyStatus(""), 1800);
+          return;
+        } catch (richCopyError) {
+          console.warn("Rich table copy failed; using text fallback.", richCopyError);
+        }
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        legacyCopyText(text);
+      }
+
+      setCopyStatus("Copied table");
       window.setTimeout(() => setCopyStatus(""), 1800);
     } catch (error) {
       console.error(error);
